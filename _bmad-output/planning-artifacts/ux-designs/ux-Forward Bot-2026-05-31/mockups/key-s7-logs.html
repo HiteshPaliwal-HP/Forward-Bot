@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forward Bot — Key screen S7 — Logs</title>
+<style>
+/*
+  Illustrates:
+    EXPERIENCE.md → Logs as verification surface (live tail default, severity glanceable, jump-to-rule)
+    EXPERIENCE.md → Component Patterns → Log row (all four severity buckets)
+    EXPERIENCE.md → Component Patterns → "Jump to rule" affordance
+    EXPERIENCE.md → State Patterns → Log ring-buffer floor inline note
+    EXPERIENCE.md → Voice and Tone (terse event labels + mono payload previews)
+    EXPERIENCE.md → Key Flows → Flow 1 climax beat (Row 1 forwarded after Row 3 blocked_keyword)
+    DESIGN.md     → Components → log-row-forwarded / log-row-filter-blocked /
+                                  log-row-telegram-rejected / log-row-destination-unreachable /
+                                  log-row-flood-wait
+    DESIGN.md     → Colors (state-success vs state-muted vs state-error vs state-warning separation)
+*/
+
+/* ---------- DESIGN.md tokens ---------- */
+.light {
+  --background:           #FAFAF9;
+  --background-muted:     #F4F4F2;
+  --border:               #E7E5E0;
+  --foreground:           #1C1917;
+  --foreground-muted:     #78716C;
+  --accent:               #16A34A;
+  --accent-hover:         #15803D;
+  --accent-foreground:    #FFFFFF;
+  --state-success:        #16A34A;
+  --state-success-bg:     #F0FDF4;
+  --state-success-border: #BBF7D0;
+  --state-success-fg:     #15803D;
+  --state-warning:        #D97706;
+  --state-warning-bg:     #FEF3C7;
+  --state-warning-border: #FDE68A;
+  --state-warning-fg:     #92400E;
+  --state-error:          #DC2626;
+  --state-error-bg:       #FEF2F2;
+  --state-error-border:   #FECACA;
+  --state-error-fg:       #991B1B;
+  --state-muted:          #A8A29E;
+  --state-muted-bg:       #F4F4F2;
+  --card:                 #FFFFFF;
+  --shadow:               0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+}
+.dark {
+  --background:           #14130F;
+  --background-muted:     #1C1B16;
+  --border:               #2A2823;
+  --foreground:           #E7E5E0;
+  --foreground-muted:     #A8A29E;
+  --accent:               #22C55E;
+  --accent-hover:         #16A34A;
+  --accent-foreground:    #052E16;
+  --state-success:        #22C55E;
+  --state-success-bg:     rgba(34,197,94,0.12);
+  --state-success-border: rgba(34,197,94,0.35);
+  --state-success-fg:     #4ADE80;
+  --state-warning:        #F59E0B;
+  --state-warning-bg:     rgba(245,158,11,0.14);
+  --state-warning-border: rgba(245,158,11,0.45);
+  --state-warning-fg:     #FCD34D;
+  --state-error:          #EF4444;
+  --state-error-bg:       rgba(239,68,68,0.12);
+  --state-error-border:   rgba(239,68,68,0.35);
+  --state-error-fg:       #FCA5A5;
+  --state-muted:          #78716C;
+  --state-muted-bg:       #1C1B16;
+  --card:                 #1C1B16;
+  --shadow:               0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.45);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Geist Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #d9d6d0;
+  color: #1C1917;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+.page-stack { padding: 24px; display: flex; flex-direction: column; gap: 32px; }
+.section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #57534e;
+  margin: 0 4px 8px;
+  font-weight: 600;
+}
+.section-label.dark-label { color: #a8a29e; }
+
+/* ---------- browser frame ---------- */
+.browser {
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 24px 60px rgba(0,0,0,0.12);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.browser-chrome {
+  background: #ebe9e4;
+  border-bottom: 1px solid #d6d3cd;
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.dark .browser-chrome { background: #0d0c09; border-bottom: 1px solid #2a2823; }
+.traffic { display: flex; gap: 6px; }
+.traffic span { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.traffic .r { background: #ff5f57; }
+.traffic .y { background: #febc2e; }
+.traffic .g { background: #28c840; }
+.nav-btns { display: flex; gap: 4px; margin-left: 8px; color: #a8a29e; }
+.tabs { display: flex; gap: 4px; margin-left: 8px; }
+.tab {
+  background: var(--background);
+  border: 1px solid #d6d3cd;
+  border-bottom-color: var(--background);
+  padding: 5px 12px 6px;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  display: flex; align-items: center; gap: 6px;
+  color: var(--foreground);
+  margin-bottom: -1px;
+  max-width: 280px;
+}
+.dark .tab { border-color: #2a2823; border-bottom-color: var(--background); }
+.tab-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); flex: 0 0 12px; }
+.urlbar {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #d6d3cd;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #57534e;
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.dark .urlbar { background: #14130F; border-color: #2a2823; color: #a8a29e; }
+.url-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- app shell ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 900px;
+}
+.sidebar {
+  background: var(--background-muted);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.brand-chip {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent-foreground);
+}
+.brand-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+.brand-sub  { font-size: 10px; color: var(--foreground-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--foreground);
+  text-decoration: none;
+  cursor: default;
+}
+.nav a.active {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.nav a.active svg { color: var(--accent-foreground); }
+.nav svg { width: 16px; height: 16px; color: var(--foreground-muted); }
+.rail-foot {
+  margin-top: auto;
+  padding: 10px 8px;
+  display: flex; align-items: center; gap: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--foreground-muted);
+}
+.tg-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--state-success);
+  box-shadow: 0 0 0 3px var(--state-success-bg);
+}
+
+/* ---------- content ---------- */
+.content { padding: 20px 28px 36px; min-width: 0; }
+.page-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.title-cluster { display: flex; align-items: center; gap: 12px; }
+.title-h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 0; }
+
+.live-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: var(--state-success-bg);
+  border: 1px solid var(--state-success-border);
+  color: var(--state-success-fg);
+  font-weight: 500;
+}
+.live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--state-success);
+  box-shadow:
+    0 0 0 4px var(--state-success-bg),
+    0 0 0 6px var(--state-success-border);
+}
+
+.head-actions { display: flex; align-items: center; gap: 8px; }
+.btn {
+  font: inherit;
+  border-radius: 6px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  cursor: default;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+}
+.btn-outline {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.btn-ghost { background: transparent; color: var(--foreground); }
+
+/* ---------- filter bar ---------- */
+.filter-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--foreground);
+}
+.filter-chip .key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--foreground-muted);
+}
+.filter-chip .val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--accent);
+  font-weight: 500;
+}
+.filter-chip .x {
+  margin-left: 2px;
+  color: var(--foreground-muted);
+  display: inline-flex;
+}
+.search-input {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--foreground-muted);
+  flex: 1;
+  min-width: 200px;
+}
+.live-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+  color: var(--foreground);
+}
+.toggle-sm {
+  width: 26px; height: 16px;
+  border-radius: 9999px;
+  background: var(--accent);
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.toggle-sm::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 12px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+/* ---------- log table ---------- */
+.log-table {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.log-row {
+  display: grid;
+  grid-template-columns: 84px 22px 200px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px 10px 16px;
+  border-top: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  font-size: 12.5px;
+  position: relative;
+}
+.log-row:first-child { border-top: none; }
+.log-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--foreground-muted);
+  letter-spacing: -0.02em;
+}
+.log-icon {
+  width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.log-icon svg { width: 14px; height: 14px; }
+.log-label {
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.log-rule {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  font-weight: 500;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.log-payload {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.log-payload .muted { color: var(--foreground-muted); }
+.log-meta {
+  font-size: 11.5px;
+  color: var(--foreground-muted);
+  display: inline-flex; align-items: center; gap: 10px;
+  white-space: nowrap;
+}
+.jump-link {
+  font-size: 11.5px;
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-weight: 500;
+}
+
+/* row variants by severity */
+.row-forwarded {
+  border-left-color: var(--state-success);
+}
+.row-forwarded .log-icon { color: var(--state-success); }
+.row-forwarded .log-label { color: var(--foreground); }
+
+.row-forwarded.climax {
+  background: var(--state-success-bg);
+  border-left-width: 4px;
+}
+
+.row-muted {
+  border-left-color: var(--state-muted);
+}
+.row-muted .log-icon { color: var(--state-muted); }
+.row-muted .log-label { color: var(--foreground-muted); }
+.row-muted .log-payload { color: var(--foreground-muted); }
+
+.row-error {
+  border-left-color: var(--state-error);
+  background: var(--state-error-bg);
+}
+.row-error .log-icon { color: var(--state-error); }
+.row-error .log-label { color: var(--state-error-fg); }
+.row-error .log-payload { color: var(--state-error-fg); }
+
+.row-warning {
+  border-left-color: var(--state-warning);
+  background: var(--state-warning-bg);
+}
+.row-warning .log-icon { color: var(--state-warning); }
+.row-warning .log-label { color: var(--state-warning-fg); }
+.row-warning .log-payload { color: var(--state-warning-fg); }
+
+/* ring-buffer floor note */
+.buffer-floor {
+  padding: 14px 16px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--foreground-muted);
+  text-align: center;
+  border-top: 1px solid var(--border);
+  background: var(--background-muted);
+}
+
+/* arrow inline used for source→dest */
+.arrow-inline {
+  display: inline-flex; vertical-align: middle;
+  margin: 0 3px;
+  color: var(--foreground-muted);
+}
+</style>
+</head>
+<body>
+<div class="page-stack">
+
+  <!-- ===== LIGHT ===== -->
+  <div>
+    <div class="section-label">Light mode — S7 Logs (live tail, all four severity buckets, climax row at top)</div>
+    <div class="browser light">
+      <div class="browser-chrome">
+        <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <div class="nav-btns">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div class="tabs"><div class="tab"><span class="tab-dot"></span><span>Forward Bot — /logs</span></div></div>
+        <div class="urlbar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="url-text">https://forward-bot.local/logs?event=blocked_keyword</span>
+        </div>
+      </div>
+
+      <div class="app">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>
+            </div>
+            <div>
+              <div class="brand-name">Forward Bot</div>
+              <div class="brand-sub">Operator</div>
+            </div>
+          </div>
+          <nav class="nav">
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>Forwards</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Sources</a>
+            <a class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Logs</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6M7 12H1m16.95-7.95l-4.24 4.24M9.29 14.71l-4.24 4.24m0-14.14l4.24 4.24m5.42 5.42l4.24 4.24"/></svg>Settings</a>
+          </nav>
+          <div class="rail-foot"><span class="tg-dot"></span>Telegram connected</div>
+        </aside>
+
+        <main class="content">
+          <div class="page-head">
+            <div class="title-cluster">
+              <h1 class="title-h1">Logs</h1>
+              <span class="live-pill"><span class="live-dot"></span>Live</span>
+            </div>
+            <div class="head-actions">
+              <button class="btn btn-outline">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Pause
+              </button>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <div class="filter-chip">
+              <span class="key">event=</span>
+              <span class="val">blocked_keyword</span>
+              <span class="x">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px; color: var(--foreground-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="search-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              correlation_id…
+            </div>
+            <div class="live-toggle">
+              <span class="toggle-sm"></span>
+              Live
+            </div>
+          </div>
+
+          <div class="log-table">
+            <!-- Row 1: forwarded — climax beat -->
+            <div class="log-row row-forwarded climax">
+              <span class="log-time mono">19:42:14</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </span>
+              <span class="log-label">
+                Forwarded
+                <span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span>
+              </span>
+              <span class="log-payload">"SOL pumping past $200 — ATH territory…"</span>
+              <span class="log-meta"><span class="mono">cid:7a4f</span></span>
+            </div>
+
+            <!-- Row 2: outside_time_window — muted -->
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:30:02</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Filter-blocked: outside_time_window
+                <span class="log-rule">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span>
+              </span>
+              <span class="log-payload"><span class="muted">window=09:00–17:00 Europe/Warsaw, now=19:30</span></span>
+              <span class="log-meta"><span class="mono">cid:7a4e</span></span>
+            </div>
+
+            <!-- Row 3: blocked_keyword — muted, with jump-to-rule -->
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:29:48</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Filter-blocked: blocked_keyword
+                <span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span>
+              </span>
+              <span class="log-payload"><span class="muted">matched="1000x"</span></span>
+              <span class="log-meta">
+                <a class="jump-link">Jump to rule
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </a>
+                <span class="mono">cid:7a4d</span>
+              </span>
+            </div>
+
+            <!-- Row 4: forwarded -->
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:28:11</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </span>
+              <span class="log-label">
+                Forwarded
+                <span class="log-rule">ETH Daily <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span>
+              </span>
+              <span class="log-payload">"ETH gas fees hit yearly low…"</span>
+              <span class="log-meta"><span class="mono">cid:7a4c</span></span>
+            </div>
+
+            <!-- Row 5: telegram_rejected — error -->
+            <div class="log-row row-error">
+              <span class="log-time mono">19:27:33</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </span>
+              <span class="log-label">
+                Telegram rejected
+                <span class="log-rule">Tech Crunch Mirror <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Tech Hub</span>
+              </span>
+              <span class="log-payload">error="FloodWait 30s"</span>
+              <span class="log-meta"><span class="mono">cid:7a4b</span></span>
+            </div>
+
+            <!-- Row 6: sampled_out — muted -->
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:26:58</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Filter-blocked: sampled_out
+                <span class="log-rule">SOL Insider <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span>
+              </span>
+              <span class="log-payload"><span class="muted">skipped slot 2/3 (sample=1/3)</span></span>
+              <span class="log-meta"><span class="mono">cid:7a4a</span></span>
+            </div>
+
+            <!-- Row 7: flood_wait — warning -->
+            <div class="log-row row-warning">
+              <span class="log-time mono">19:25:40</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg>
+              </span>
+              <span class="log-label">
+                FloodWait
+                <span class="log-rule" style="color: var(--state-warning-fg); text-decoration-color: var(--state-warning-fg);">4 rules</span>
+              </span>
+              <span class="log-payload">FloodWait 12s — throttling 4 rules</span>
+              <span class="log-meta"><span class="mono">cid:7a49</span></span>
+            </div>
+
+            <!-- Row 8: destination_unreachable — error -->
+            <div class="log-row row-error">
+              <span class="log-time mono">19:24:19</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Destination unreachable
+                <span class="log-rule" style="color: var(--state-error-fg); text-decoration-color: var(--state-error-fg);">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span>
+              </span>
+              <span class="log-payload">channel not accessible — check destination ID</span>
+              <span class="log-meta"><span class="mono">cid:7a48</span></span>
+            </div>
+
+            <!-- Row 9: media_type_filtered — muted -->
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:22:55</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Filter-blocked: media_type_filtered
+                <span class="log-rule">Daily Digest <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Personal</span>
+              </span>
+              <span class="log-payload"><span class="muted">media=photo, allow=[text]</span></span>
+              <span class="log-meta"><span class="mono">cid:7a47</span></span>
+            </div>
+
+            <!-- Row 10: forwarded -->
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:21:08</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </span>
+              <span class="log-label">
+                Forwarded
+                <span class="log-rule">Tech Crunch Mirror <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Tech Hub</span>
+              </span>
+              <span class="log-payload">"AWS announces us-east-1 multi-AZ failover…"</span>
+              <span class="log-meta"><span class="mono">cid:7a46</span></span>
+            </div>
+
+            <!-- Row 11: blocked_keyword — muted -->
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:18:31</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              </span>
+              <span class="log-label">
+                Filter-blocked: blocked_keyword
+                <span class="log-rule">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span>
+              </span>
+              <span class="log-payload"><span class="muted">matched="presale"</span></span>
+              <span class="log-meta"><span class="mono">cid:7a45</span></span>
+            </div>
+
+            <!-- Row 12: forwarded -->
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:15:02</span>
+              <span class="log-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+              </span>
+              <span class="log-label">
+                Forwarded
+                <span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span>
+              </span>
+              <span class="log-payload">"BTC bouncing off 200d MA — reclaim incoming?"</span>
+              <span class="log-meta"><span class="mono">cid:7a44</span></span>
+            </div>
+
+            <div class="buffer-floor">Beyond 1h — older events not retained.</div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DARK ===== -->
+  <div>
+    <div class="section-label dark-label">Dark mode — S7 Logs (live tail, all four severity buckets, climax row at top)</div>
+    <div class="browser dark">
+      <div class="browser-chrome">
+        <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <div class="nav-btns">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div class="tabs"><div class="tab"><span class="tab-dot"></span><span>Forward Bot — /logs</span></div></div>
+        <div class="urlbar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="url-text">https://forward-bot.local/logs?event=blocked_keyword</span>
+        </div>
+      </div>
+
+      <div class="app">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>
+            </div>
+            <div>
+              <div class="brand-name">Forward Bot</div>
+              <div class="brand-sub">Operator</div>
+            </div>
+          </div>
+          <nav class="nav">
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>Forwards</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Sources</a>
+            <a class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Logs</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6m11-11h-6M7 12H1m16.95-7.95l-4.24 4.24M9.29 14.71l-4.24 4.24m0-14.14l4.24 4.24m5.42 5.42l4.24 4.24"/></svg>Settings</a>
+          </nav>
+          <div class="rail-foot"><span class="tg-dot"></span>Telegram connected</div>
+        </aside>
+
+        <main class="content">
+          <div class="page-head">
+            <div class="title-cluster">
+              <h1 class="title-h1">Logs</h1>
+              <span class="live-pill"><span class="live-dot"></span>Live</span>
+            </div>
+            <div class="head-actions">
+              <button class="btn btn-outline">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Pause
+              </button>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <div class="filter-chip">
+              <span class="key">event=</span>
+              <span class="val">blocked_keyword</span>
+              <span class="x">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px; color: var(--foreground-muted);"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="search-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              correlation_id…
+            </div>
+            <div class="live-toggle">
+              <span class="toggle-sm"></span>
+              Live
+            </div>
+          </div>
+
+          <div class="log-table">
+            <div class="log-row row-forwarded climax">
+              <span class="log-time mono">19:42:14</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></span>
+              <span class="log-label">Forwarded<span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span></span>
+              <span class="log-payload">"SOL pumping past $200 — ATH territory…"</span>
+              <span class="log-meta"><span class="mono">cid:7a4f</span></span>
+            </div>
+
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:30:02</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Filter-blocked: outside_time_window<span class="log-rule">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span></span>
+              <span class="log-payload"><span class="muted">window=09:00–17:00 Europe/Warsaw, now=19:30</span></span>
+              <span class="log-meta"><span class="mono">cid:7a4e</span></span>
+            </div>
+
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:29:48</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Filter-blocked: blocked_keyword<span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span></span>
+              <span class="log-payload"><span class="muted">matched="1000x"</span></span>
+              <span class="log-meta">
+                <a class="jump-link">Jump to rule
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </a>
+                <span class="mono">cid:7a4d</span>
+              </span>
+            </div>
+
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:28:11</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></span>
+              <span class="log-label">Forwarded<span class="log-rule">ETH Daily <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span></span>
+              <span class="log-payload">"ETH gas fees hit yearly low…"</span>
+              <span class="log-meta"><span class="mono">cid:7a4c</span></span>
+            </div>
+
+            <div class="log-row row-error">
+              <span class="log-time mono">19:27:33</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+              <span class="log-label">Telegram rejected<span class="log-rule" style="color: var(--state-error-fg); text-decoration-color: var(--state-error-fg);">Tech Crunch Mirror <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Tech Hub</span></span>
+              <span class="log-payload">error="FloodWait 30s"</span>
+              <span class="log-meta"><span class="mono">cid:7a4b</span></span>
+            </div>
+
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:26:58</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Filter-blocked: sampled_out<span class="log-rule">SOL Insider <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span></span>
+              <span class="log-payload"><span class="muted">skipped slot 2/3 (sample=1/3)</span></span>
+              <span class="log-meta"><span class="mono">cid:7a4a</span></span>
+            </div>
+
+            <div class="log-row row-warning">
+              <span class="log-time mono">19:25:40</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg></span>
+              <span class="log-label">FloodWait<span class="log-rule" style="color: var(--state-warning-fg); text-decoration-color: var(--state-warning-fg);">4 rules</span></span>
+              <span class="log-payload">FloodWait 12s — throttling 4 rules</span>
+              <span class="log-meta"><span class="mono">cid:7a49</span></span>
+            </div>
+
+            <div class="log-row row-error">
+              <span class="log-time mono">19:24:19</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Destination unreachable<span class="log-rule" style="color: var(--state-error-fg); text-decoration-color: var(--state-error-fg);">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span></span>
+              <span class="log-payload">channel not accessible — check destination ID</span>
+              <span class="log-meta"><span class="mono">cid:7a48</span></span>
+            </div>
+
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:22:55</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Filter-blocked: media_type_filtered<span class="log-rule">Daily Digest <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Personal</span></span>
+              <span class="log-payload"><span class="muted">media=photo, allow=[text]</span></span>
+              <span class="log-meta"><span class="mono">cid:7a47</span></span>
+            </div>
+
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:21:08</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></span>
+              <span class="log-label">Forwarded<span class="log-rule">Tech Crunch Mirror <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Tech Hub</span></span>
+              <span class="log-payload">"AWS announces us-east-1 multi-AZ failover…"</span>
+              <span class="log-meta"><span class="mono">cid:7a46</span></span>
+            </div>
+
+            <div class="log-row row-muted">
+              <span class="log-time mono">19:18:31</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>
+              <span class="log-label">Filter-blocked: blocked_keyword<span class="log-rule">Politics Now <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> Politics Hub</span></span>
+              <span class="log-payload"><span class="muted">matched="presale"</span></span>
+              <span class="log-meta"><span class="mono">cid:7a45</span></span>
+            </div>
+
+            <div class="log-row row-forwarded">
+              <span class="log-time mono">19:15:02</span>
+              <span class="log-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></span>
+              <span class="log-label">Forwarded<span class="log-rule">Crypto Signals Pro <span class="arrow-inline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span> My Crypto Hub</span></span>
+              <span class="log-payload">"BTC bouncing off 200d MA — reclaim incoming?"</span>
+              <span class="log-meta"><span class="mono">cid:7a44</span></span>
+            </div>
+
+            <div class="buffer-floor">Beyond 1h — older events not retained.</div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

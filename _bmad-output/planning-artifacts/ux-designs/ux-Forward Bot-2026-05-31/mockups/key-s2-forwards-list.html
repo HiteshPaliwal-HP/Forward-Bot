@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Forward Bot — Key screen S2 — Forwards List</title>
+<style>
+/*
+  Illustrates:
+    EXPERIENCE.md → Information Architecture (S2 Forwards List row)
+    EXPERIENCE.md → Component Patterns → Filter icon row (S2)
+    EXPERIENCE.md → Component Patterns → Status pill / Bulk action bar
+    EXPERIENCE.md → State Patterns → Empty (cold)
+    EXPERIENCE.md → Voice and Tone (terse counts, "No forwards yet.")
+    DESIGN.md     → Colors (accent vs state-success separation)
+    DESIGN.md     → Components → filter-icon-active / filter-icon-inactive
+    DESIGN.md     → Components → button-primary, toggle-on, pill-success
+    DESIGN.md     → Components → log-row-* tokens (none rendered here — see S7)
+*/
+
+/* ---------- DESIGN.md tokens ---------- */
+.light {
+  --background:           #FAFAF9;
+  --background-muted:     #F4F4F2;
+  --border:               #E7E5E0;
+  --foreground:           #1C1917;
+  --foreground-muted:     #78716C;
+  --accent:               #16A34A;
+  --accent-hover:         #15803D;
+  --accent-foreground:    #FFFFFF;
+  --state-success:        #16A34A;
+  --state-success-bg:     #F0FDF4;
+  --state-success-border: #BBF7D0;
+  --state-success-fg:     #15803D;
+  --state-muted:          #A8A29E;
+  --state-muted-bg:       #F4F4F2;
+  --card:                 #FFFFFF;
+  --shadow:               0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+}
+.dark {
+  --background:           #14130F;
+  --background-muted:     #1C1B16;
+  --border:               #2A2823;
+  --foreground:           #E7E5E0;
+  --foreground-muted:     #A8A29E;
+  --accent:               #22C55E;
+  --accent-hover:         #16A34A;
+  --accent-foreground:    #052E16;
+  --state-success:        #22C55E;
+  --state-success-bg:     rgba(34,197,94,0.12);
+  --state-success-border: rgba(34,197,94,0.35);
+  --state-success-fg:     #4ADE80;
+  --state-muted:          #78716C;
+  --state-muted-bg:       #1C1B16;
+  --card:                 #1C1B16;
+  --shadow:               0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Geist Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #d9d6d0;
+  color: #1C1917;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+.page-stack { padding: 24px; display: flex; flex-direction: column; gap: 32px; }
+.section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #57534e;
+  margin: 0 4px 8px;
+  font-weight: 600;
+}
+.section-label.dark-label { color: #a8a29e; }
+
+/* ---------- browser frame ---------- */
+.browser {
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 24px 60px rgba(0,0,0,0.12);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.browser-chrome {
+  background: #ebe9e4;
+  border-bottom: 1px solid #d6d3cd;
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.dark .browser-chrome {
+  background: #0d0c09;
+  border-bottom: 1px solid #2a2823;
+}
+.traffic { display: flex; gap: 6px; }
+.traffic span { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.traffic .r { background: #ff5f57; }
+.traffic .y { background: #febc2e; }
+.traffic .g { background: #28c840; }
+.nav-btns { display: flex; gap: 4px; margin-left: 8px; color: #a8a29e; }
+.nav-btns svg { display: block; }
+.tabs { display: flex; gap: 4px; margin-left: 8px; flex: 0 0 auto; }
+.tab {
+  background: var(--background);
+  border: 1px solid #d6d3cd;
+  border-bottom-color: var(--background);
+  padding: 5px 12px 6px;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  display: flex; align-items: center; gap: 6px;
+  color: var(--foreground);
+  margin-bottom: -1px;
+  max-width: 280px;
+}
+.dark .tab { border-color: #2a2823; border-bottom-color: var(--background); }
+.tab-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); flex: 0 0 12px; }
+.urlbar {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #d6d3cd;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #57534e;
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.dark .urlbar { background: #14130F; border-color: #2a2823; color: #a8a29e; }
+.urlbar svg { flex: 0 0 12px; }
+.url-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- app shell ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 760px;
+}
+.sidebar {
+  background: var(--background-muted);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.brand-chip {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent-foreground);
+}
+.brand-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+.brand-sub  { font-size: 10px; color: var(--foreground-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--foreground);
+  text-decoration: none;
+  cursor: default;
+}
+.nav a.active {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.nav a.active svg { color: var(--accent-foreground); }
+.nav a:not(.active):hover { background: rgba(0,0,0,0.04); }
+.dark .nav a:not(.active):hover { background: rgba(255,255,255,0.04); }
+.nav svg { width: 16px; height: 16px; color: var(--foreground-muted); }
+
+.rail-foot {
+  margin-top: auto;
+  padding: 10px 8px;
+  display: flex; align-items: center; gap: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--foreground-muted);
+}
+.tg-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--state-success);
+  box-shadow: 0 0 0 3px var(--state-success-bg);
+}
+
+/* ---------- content ---------- */
+.content { padding: 24px 28px 40px; min-width: 0; }
+
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+.title-h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 0; }
+.subtitle { font-size: 13px; color: var(--foreground-muted); margin-top: 4px; }
+.subtitle .sep { color: var(--border); margin: 0 6px; }
+
+.btn {
+  font: inherit;
+  border-radius: 6px;
+  padding: 7px 13px;
+  border: 1px solid transparent;
+  cursor: default;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border-color: transparent;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+/* ---------- filter bar ---------- */
+.filter-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.segmented {
+  display: inline-flex;
+  background: var(--background-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+.segmented .seg {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  color: var(--foreground-muted);
+}
+.segmented .seg.active {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.dark .segmented .seg.active { box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+
+.select-input {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--foreground);
+}
+.search-input {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--foreground-muted);
+  flex: 1;
+  min-width: 200px;
+}
+
+/* ---------- table ---------- */
+.table-wrap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--foreground-muted);
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--background-muted);
+  border-bottom: 1px solid var(--border);
+}
+tbody td {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 13px;
+}
+tbody tr:first-child td { border-top: none; }
+tbody tr.selected {
+  background: var(--state-success-bg);
+}
+tbody tr.inactive td:not(.col-actions) { color: var(--foreground-muted); }
+tbody tr.inactive .src-name, tbody tr.inactive .dst-name { color: var(--foreground-muted); }
+
+.col-check { width: 32px; }
+.col-filters { width: 132px; }
+.col-last { width: 140px; color: var(--foreground-muted); }
+.col-actions { width: 96px; text-align: right; }
+
+.checkbox {
+  width: 14px; height: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  display: inline-block;
+  vertical-align: middle;
+  background: var(--card);
+}
+.checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  position: relative;
+}
+.checkbox.checked::after {
+  content: "";
+  position: absolute;
+  left: 3px; top: 0px;
+  width: 4px; height: 8px;
+  border: solid var(--accent-foreground);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.src-name, .dst-name { font-weight: 500; }
+.dst-folder {
+  color: var(--foreground-muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+.arrow {
+  color: var(--foreground-muted);
+  margin: 0 6px;
+}
+
+/* filter icons */
+.filter-icons {
+  display: inline-flex; gap: 8px; align-items: center;
+}
+.filter-icons svg {
+  width: 14px; height: 14px;
+  display: block;
+}
+.fi-on  { color: var(--accent); opacity: 1; }
+.fi-off { color: var(--foreground-muted); opacity: 0.4; }
+
+/* toggle */
+.toggle {
+  width: 30px; height: 18px;
+  border-radius: 9999px;
+  background: var(--border);
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  transition: none;
+}
+.toggle.on { background: var(--accent); }
+.toggle.on::after { left: 14px; }
+
+.row-menu {
+  display: inline-flex;
+  width: 26px; height: 26px;
+  align-items: center; justify-content: center;
+  color: var(--foreground-muted);
+  border-radius: 4px;
+}
+
+/* bulk action bar */
+.bulk-bar {
+  position: relative;
+  margin-top: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.bulk-count { font-size: 13px; font-weight: 500; }
+.bulk-count .em { color: var(--accent); }
+.bulk-sep { color: var(--border); }
+.bulk-spacer { flex: 1; }
+
+/* empty state card */
+.empty-wrap {
+  background: var(--card);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 56px 24px;
+  text-align: center;
+  margin-top: 28px;
+}
+.empty-msg {
+  color: var(--foreground-muted);
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.empty-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--foreground);
+  margin-bottom: 6px;
+}
+
+/* spacing helper */
+.row-gap { display: flex; align-items: center; gap: 8px; }
+
+/* visually keep table dense and aligned */
+td.col-source, td.col-dest { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page-stack">
+
+  <!-- ===== LIGHT ===== -->
+  <div>
+    <div class="section-label">Light mode — S2 Forwards List (populated, with bulk-select)</div>
+    <div class="browser light">
+      <div class="browser-chrome">
+        <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <div class="nav-btns" style="color:#a8a29e;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div class="tabs">
+          <div class="tab"><span class="tab-dot"></span><span>Forward Bot — /forwards</span></div>
+        </div>
+        <div class="urlbar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="url-text">https://forward-bot.local/forwards</span>
+        </div>
+      </div>
+
+      <div class="app">
+        <!-- sidebar -->
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>
+            </div>
+            <div>
+              <div class="brand-name">Forward Bot</div>
+              <div class="brand-sub">Operator</div>
+            </div>
+          </div>
+          <nav class="nav">
+            <a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+              Dashboard
+            </a>
+            <a class="active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>
+              Forwards
+            </a>
+            <a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              Sources
+            </a>
+            <a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Logs
+            </a>
+            <a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Settings
+            </a>
+          </nav>
+          <div class="rail-foot">
+            <span class="tg-dot"></span>
+            Telegram connected
+          </div>
+        </aside>
+
+        <!-- content -->
+        <main class="content">
+          <div class="page-head">
+            <div>
+              <h1 class="title-h1">Forwards</h1>
+              <div class="subtitle">47 active <span class="sep">·</span> 3 inactive <span class="sep">·</span> 0 errored</div>
+            </div>
+            <button class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New forward
+            </button>
+          </div>
+
+          <div class="filter-bar">
+            <div class="segmented">
+              <div class="seg active">All</div>
+              <div class="seg">Active</div>
+              <div class="seg">Inactive</div>
+            </div>
+            <div class="select-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Folder: All
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="search-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Search source or destination…
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-check"><span class="checkbox"></span></th>
+                  <th>Source</th>
+                  <th>Destination</th>
+                  <th class="col-filters">Filters</th>
+                  <th class="col-last">Last forwarded</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td class="col-source"><span class="src-name">Crypto Signals Pro</span></td>
+                  <td class="col-dest"><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>2m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">ETH Daily</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>14m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td><span class="src-name">SOL Insider</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>1h ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Tech Crunch Mirror</span></td>
+                  <td><span class="dst-name">Tech Hub</span><span class="dst-folder">· Tech</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>4m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="inactive">
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Daily Digest</span></td>
+                  <td><span class="dst-name">Personal</span><span class="dst-folder">· Ungrouped</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>6m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td><span class="src-name">Politics Now</span></td>
+                  <td><span class="dst-name">Politics Hub</span><span class="dst-folder">· Politics</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>8h ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="inactive">
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Old Crypto News</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>never</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- bulk action bar -->
+          <div class="bulk-bar">
+            <span class="bulk-count"><span class="em">3 selected</span></span>
+            <span class="bulk-sep">—</span>
+            <button class="btn btn-outline">Enable</button>
+            <button class="btn btn-outline">Disable</button>
+            <span class="bulk-spacer"></span>
+            <button class="btn btn-ghost">Cancel</button>
+          </div>
+
+          <!-- empty state demo -->
+          <div style="margin-top:32px;">
+            <div class="section-label" style="margin-left:0;">State Patterns → Empty (cold)</div>
+            <div class="empty-wrap">
+              <div class="empty-title">No forwards yet.</div>
+              <div class="empty-msg">Create one to begin processing source messages.</div>
+              <button class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New forward
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DARK ===== -->
+  <div>
+    <div class="section-label dark-label">Dark mode — S2 Forwards List (populated, with bulk-select)</div>
+    <div class="browser dark">
+      <div class="browser-chrome">
+        <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <div class="nav-btns">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div class="tabs">
+          <div class="tab"><span class="tab-dot"></span><span>Forward Bot — /forwards</span></div>
+        </div>
+        <div class="urlbar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="url-text">https://forward-bot.local/forwards</span>
+        </div>
+      </div>
+
+      <div class="app">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>
+            </div>
+            <div>
+              <div class="brand-name">Forward Bot</div>
+              <div class="brand-sub">Operator</div>
+            </div>
+          </div>
+          <nav class="nav">
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a>
+            <a class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 17 7"/><polyline points="9 7 17 7 17 15"/></svg>Forwards</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Sources</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Logs</a>
+            <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+          </nav>
+          <div class="rail-foot"><span class="tg-dot"></span>Telegram connected</div>
+        </aside>
+
+        <main class="content">
+          <div class="page-head">
+            <div>
+              <h1 class="title-h1">Forwards</h1>
+              <div class="subtitle">47 active <span class="sep">·</span> 3 inactive <span class="sep">·</span> 0 errored</div>
+            </div>
+            <button class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New forward
+            </button>
+          </div>
+
+          <div class="filter-bar">
+            <div class="segmented">
+              <div class="seg active">All</div>
+              <div class="seg">Active</div>
+              <div class="seg">Inactive</div>
+            </div>
+            <div class="select-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Folder: All
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="search-input">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Search source or destination…
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-check"><span class="checkbox"></span></th>
+                  <th>Source</th>
+                  <th>Destination</th>
+                  <th class="col-filters">Filters</th>
+                  <th class="col-last">Last forwarded</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td><span class="src-name">Crypto Signals Pro</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>2m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">ETH Daily</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>14m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td><span class="src-name">SOL Insider</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>1h ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Tech Crunch Mirror</span></td>
+                  <td><span class="dst-name">Tech Hub</span><span class="dst-folder">· Tech</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>4m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="inactive">
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Daily Digest</span></td>
+                  <td><span class="dst-name">Personal</span><span class="dst-folder">· Ungrouped</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>6m ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="selected">
+                  <td><span class="checkbox checked"></span></td>
+                  <td><span class="src-name">Politics Now</span></td>
+                  <td><span class="dst-name">Politics Hub</span><span class="dst-folder">· Politics</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>8h ago</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle on"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+
+                <tr class="inactive">
+                  <td><span class="checkbox"></span></td>
+                  <td><span class="src-name">Old Crypto News</span></td>
+                  <td><span class="dst-name">My Crypto Hub</span><span class="dst-folder">· Crypto</span></td>
+                  <td>
+                    <span class="filter-icons">
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                      <svg class="fi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg class="fi-on"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                  </td>
+                  <td>never</td>
+                  <td class="col-actions">
+                    <span class="row-gap" style="justify-content:flex-end;">
+                      <span class="toggle"></span>
+                      <span class="row-menu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bulk-bar">
+            <span class="bulk-count"><span class="em">3 selected</span></span>
+            <span class="bulk-sep">—</span>
+            <button class="btn btn-outline">Enable</button>
+            <button class="btn btn-outline">Disable</button>
+            <span class="bulk-spacer"></span>
+            <button class="btn btn-ghost">Cancel</button>
+          </div>
+
+          <div style="margin-top:32px;">
+            <div class="section-label dark-label" style="margin-left:0;">State Patterns → Empty (cold)</div>
+            <div class="empty-wrap">
+              <div class="empty-title">No forwards yet.</div>
+              <div class="empty-msg">Create one to begin processing source messages.</div>
+              <button class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New forward
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

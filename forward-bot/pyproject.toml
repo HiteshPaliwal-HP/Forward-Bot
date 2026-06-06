@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forward-bot"
+version = "0.1.0"
+description = "Self-hosted Telegram forwarding worker with React operator dashboard"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Hitesh Paliwal", email = "hpaliwal@sgintl.com"},
+]
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "telethon>=1.29.0",
+    "motor>=3.3.0",
+    "pydantic-settings>=2.1.0",
+    "structlog>=23.2.0",
+    "itsdangerous>=2.1.0",
+]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forward_bot"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ASYNC", "BLE", "C4", "ISC", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "mypy>=2.1.0",
+    "ruff>=0.15.15",
+]

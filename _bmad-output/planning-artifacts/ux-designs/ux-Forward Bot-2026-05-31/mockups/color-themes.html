@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Forward Bot — Accent color exploration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* ------------------------------------------------------------------
+     Forward Bot — Accent color exploration
+     5 variations x 2 modes (light + dark) per shadcn/ui on Tailwind.
+     No JS, no network, no external assets.
+     ------------------------------------------------------------------ */
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #18181b;
+    background: #f4f4f5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px 28px 96px;
+  }
+  .page-head {
+    margin-bottom: 28px;
+  }
+  .page-head h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    color: #0a0a0a;
+  }
+  .page-head p {
+    margin: 0;
+    color: #52525b;
+    font-size: 13px;
+    max-width: 820px;
+  }
+
+  /* Variation card frame */
+  .variation {
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .variation-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e4e4e7;
+    background: #fafafa;
+    flex-wrap: wrap;
+  }
+  .variation-title {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .variation-title h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: #0a0a0a;
+    letter-spacing: -0.005em;
+  }
+  .variation-title .hex {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", monospace;
+    font-size: 12px;
+    color: #71717a;
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .variation-title .register {
+    font-size: 12px;
+    color: #71717a;
+    font-style: italic;
+  }
+
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .mode {
+    padding: 20px;
+    border-right: 1px solid #e4e4e7;
+  }
+  .mode:last-child { border-right: none; }
+  .mode-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    color: #71717a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mode-label .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #d4d4d8;
+  }
+
+  /* Token chip row */
+  .tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .token {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      monospace;
+    font-size: 11px;
+    padding: 4px 8px 4px 6px;
+    border-radius: 5px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fafafa;
+    color: #3f3f46;
+    line-height: 1;
+  }
+  .token .swatch {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.12);
+    display: inline-block;
+  }
+  .token.dark {
+    background: #18181b;
+    color: #d4d4d8;
+    border-color: rgba(255,255,255,0.08);
+  }
+  .token.dark .swatch { border-color: rgba(255,255,255,0.12); }
+
+  /* The realistic UI snippet container */
+  .snippet {
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid;
+  }
+  .snippet .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .snippet .top-row .left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .snippet h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px 3px 7px;
+    border-radius: 999px;
+    border: 1px solid;
+  }
+  .pill .pill-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 11px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: default;
+    line-height: 1;
+  }
+  .btn-primary svg { width: 13px; height: 13px; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid;
+  }
+  .row .info {
+    flex: 1;
+    min-width: 0;
+  }
+  .row .pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .row .pair .arrow {
+    font-size: 11px;
+    opacity: 0.5;
+  }
+  .row .sub {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+  .row .filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .row .filters svg {
+    width: 14px; height: 14px;
+  }
+  .row .last-fwd {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+  }
+  .row .actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .row .icon-btn {
+    width: 26px; height: 26px;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid;
+  }
+  .row .icon-btn svg { width: 13px; height: 13px; }
+
+  .toggle {
+    width: 30px; height: 18px;
+    border-radius: 999px;
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 14px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+
+  /* ============================================================
+     VARIATION 1 — Telegram Blue
+     light: bg #FAFAFA, bg-muted #F1F5F9, border #E2E8F0,
+            text #0F172A, text-muted #64748B,
+            accent #2AABEE, accent-hover #1D8FCC,
+            success #16A34A, warning #D97706, error #DC2626
+     dark:  bg #0B1220, bg-muted #131C2E, border #1F2A44,
+            text #E2E8F0, text-muted #94A3B8,
+            accent #2AABEE, accent-hover #5BBCF2
+     ============================================================ */
+  .v1-light {
+    background: #FAFAFA; color: #0F172A;
+    border-color: #E2E8F0;
+  }
+  .v1-light .snippet { background: #FFFFFF; border-color: #E2E8F0; }
+  .v1-light .row { background: #FAFAFA; border-color: #E2E8F0; }
+  .v1-light .sub, .v1-light .last-fwd { color: #64748B; }
+  .v1-light .arrow { color: #94A3B8; }
+  .v1-light .filters svg { color: #94A3B8; }
+  .v1-light .icon-btn { background: #FFFFFF; border-color: #E2E8F0; color: #64748B; }
+  .v1-light .pill.success {
+    background: #F0FDF4; border-color: #BBF7D0; color: #15803D;
+  }
+  .v1-light .pill.success .pill-dot { background: #16A34A; }
+  .v1-light .btn-primary {
+    background: #2AABEE; color: #FFFFFF;
+  }
+  .v1-light .toggle { background: #2AABEE; }
+
+  .v1-dark {
+    background: #0B1220; color: #E2E8F0;
+    border-color: #1F2A44;
+  }
+  .v1-dark .snippet { background: #131C2E; border-color: #1F2A44; }
+  .v1-dark .row { background: #0F1828; border-color: #1F2A44; }
+  .v1-dark .sub, .v1-dark .last-fwd { color: #94A3B8; }
+  .v1-dark .arrow { color: #64748B; }
+  .v1-dark .filters svg { color: #64748B; }
+  .v1-dark .icon-btn { background: #131C2E; border-color: #283452; color: #94A3B8; }
+  .v1-dark .pill.success {
+    background: rgba(22,163,74,0.12); border-color: rgba(22,163,74,0.35);
+    color: #4ADE80;
+  }
+  .v1-dark .pill.success .pill-dot { background: #22C55E; }
+  .v1-dark .btn-primary {
+    background: #2AABEE; color: #04263A;
+  }
+  .v1-dark .toggle { background: #2AABEE; }
+
+  /* ============================================================
+     VARIATION 2 — Forwarding Green
+     light: bg #FAFAF9, bg-muted #F4F4F2, border #E7E5E0,
+            text #1C1917, text-muted #78716C,
+            accent #16A34A, accent-hover #15803D,
+            success #16A34A, warning #D97706, error #DC2626
+     dark:  bg #14130F, bg-muted #1C1B16, border #2A2823,
+            text #E7E5E0, text-muted #A8A29E,
+            accent #22C55E, accent-hover #16A34A
+     ============================================================ */
+  .v2-light {
+    background: #FAFAF9; color: #1C1917;
+    border-color: #E7E5E0;
+  }
+  .v2-light .snippet { background: #FFFFFF; border-color: #E7E5E0; }
+  .v2-light .row { background: #FAFAF9; border-color: #E7E5E0; }
+  .v2-light .sub, .v2-light .last-fwd { color: #78716C; }
+  .v2-light .arrow { color: #A8A29E; }
+  .v2-light .filters svg { color: #A8A29E; }
+  .v2-light .icon-btn { background: #FFFFFF; border-color: #E7E5E0; color: #78716C; }
+  .v2-light .pill.success {
+    background: #F0FDF4; border-color: #BBF7D0; color: #15803D;
+  }
+  .v2-light .pill.success .pill-dot { background: #16A34A; }
+  .v2-light .btn-primary {
+    background: #16A34A; color: #FFFFFF;
+  }
+  .v2-light .toggle { background: #16A34A; }
+
+  .v2-dark {
+    background: #14130F; color: #E7E5E0;
+    border-color: #2A2823;
+  }
+  .v2-dark .snippet { background: #1C1B16; border-color: #2A2823; }
+  .v2-dark .row { background: #18171296; border-color: #2A2823; background: #1A1914; }
+  .v2-dark .sub, .v2-dark .last-fwd { color: #A8A29E; }
+  .v2-dark .arrow { color: #78716C; }
+  .v2-dark .filters svg { color: #78716C; }
+  .v2-dark .icon-btn { background: #1C1B16; border-color: #36332B; color: #A8A29E; }
+  .v2-dark .pill.success {
+    background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35);
+    color: #4ADE80;
+  }
+  .v2-dark .pill.success .pill-dot { background: #22C55E; }
+  .v2-dark .btn-primary {
+    background: #22C55E; color: #052E16;
+  }
+  .v2-dark .toggle { background: #22C55E; }
+
+  /* ============================================================
+     VARIATION 3 — Amber Operator
+     light: bg #FAFAF9, bg-muted #F5F5F4, border #E7E5E4,
+            text #1C1917, text-muted #78716C,
+            accent #D97706, accent-hover #B45309,
+            success #16A34A, warning #D97706, error #DC2626
+     dark:  bg #1A1612, bg-muted #211C16, border #34291F,
+            text #F5F5F4, text-muted #A8A29E,
+            accent #F59E0B, accent-hover #D97706
+     ============================================================ */
+  .v3-light {
+    background: #FAFAF9; color: #1C1917;
+    border-color: #E7E5E4;
+  }
+  .v3-light .snippet { background: #FFFFFF; border-color: #E7E5E4; }
+  .v3-light .row { background: #FAFAF9; border-color: #E7E5E4; }
+  .v3-light .sub, .v3-light .last-fwd { color: #78716C; }
+  .v3-light .arrow { color: #A8A29E; }
+  .v3-light .filters svg { color: #A8A29E; }
+  .v3-light .icon-btn { background: #FFFFFF; border-color: #E7E5E4; color: #78716C; }
+  .v3-light .pill.success {
+    background: #F0FDF4; border-color: #BBF7D0; color: #15803D;
+  }
+  .v3-light .pill.success .pill-dot { background: #16A34A; }
+  .v3-light .btn-primary {
+    background: #D97706; color: #FFFFFF;
+  }
+  .v3-light .toggle { background: #D97706; }
+
+  .v3-dark {
+    background: #1A1612; color: #F5F5F4;
+    border-color: #34291F;
+  }
+  .v3-dark .snippet { background: #211C16; border-color: #34291F; }
+  .v3-dark .row { background: #1D1914; border-color: #34291F; }
+  .v3-dark .sub, .v3-dark .last-fwd { color: #A8A29E; }
+  .v3-dark .arrow { color: #78716C; }
+  .v3-dark .filters svg { color: #78716C; }
+  .v3-dark .icon-btn { background: #211C16; border-color: #44362A; color: #A8A29E; }
+  .v3-dark .pill.success {
+    background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35);
+    color: #4ADE80;
+  }
+  .v3-dark .pill.success .pill-dot { background: #22C55E; }
+  .v3-dark .btn-primary {
+    background: #F59E0B; color: #1A1612;
+  }
+  .v3-dark .toggle { background: #F59E0B; }
+
+  /* ============================================================
+     VARIATION 4 — Engineering Indigo
+     light: bg #FAFAFA, bg-muted #F4F4F5, border #E4E4E7,
+            text #18181B, text-muted #71717A,
+            accent #6366F1, accent-hover #4F46E5,
+            success #16A34A, warning #D97706, error #DC2626
+     dark:  bg #0A0A0B, bg-muted #131316, border #26262A,
+            text #E4E4E7, text-muted #A1A1AA,
+            accent #818CF8, accent-hover #6366F1
+     ============================================================ */
+  .v4-light {
+    background: #FAFAFA; color: #18181B;
+    border-color: #E4E4E7;
+  }
+  .v4-light .snippet { background: #FFFFFF; border-color: #E4E4E7; }
+  .v4-light .row { background: #FAFAFA; border-color: #E4E4E7; }
+  .v4-light .sub, .v4-light .last-fwd { color: #71717A; }
+  .v4-light .arrow { color: #A1A1AA; }
+  .v4-light .filters svg { color: #A1A1AA; }
+  .v4-light .icon-btn { background: #FFFFFF; border-color: #E4E4E7; color: #71717A; }
+  .v4-light .pill.success {
+    background: #F0FDF4; border-color: #BBF7D0; color: #15803D;
+  }
+  .v4-light .pill.success .pill-dot { background: #16A34A; }
+  .v4-light .btn-primary {
+    background: #6366F1; color: #FFFFFF;
+  }
+  .v4-light .toggle { background: #6366F1; }
+
+  .v4-dark {
+    background: #0A0A0B; color: #E4E4E7;
+    border-color: #26262A;
+  }
+  .v4-dark .snippet { background: #131316; border-color: #26262A; }
+  .v4-dark .row { background: #0F0F12; border-color: #26262A; }
+  .v4-dark .sub, .v4-dark .last-fwd { color: #A1A1AA; }
+  .v4-dark .arrow { color: #71717A; }
+  .v4-dark .filters svg { color: #71717A; }
+  .v4-dark .icon-btn { background: #131316; border-color: #303035; color: #A1A1AA; }
+  .v4-dark .pill.success {
+    background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35);
+    color: #4ADE80;
+  }
+  .v4-dark .pill.success .pill-dot { background: #22C55E; }
+  .v4-dark .btn-primary {
+    background: #818CF8; color: #1E1B4B;
+  }
+  .v4-dark .toggle { background: #818CF8; }
+
+  /* ============================================================
+     VARIATION 5 — Terminal Green-on-Slate
+     light: bg #F8FAFC, bg-muted #F1F5F9, border #E2E8F0,
+            text #0F172A, text-muted #475569,
+            accent #15803D, accent-hover #166534,   (muted in light)
+            success #16A34A, warning #D97706, error #DC2626
+     dark:  bg #020617, bg-muted #0B1220, border #1E293B,
+            text #CBD5E1, text-muted #64748B,
+            accent #4ADE80, accent-hover #22C55E    (CRT in dark)
+     Monospace row text. Distinct from V2 — this is "I live in a terminal".
+     ============================================================ */
+  .v5-light {
+    background: #F8FAFC; color: #0F172A;
+    border-color: #E2E8F0;
+  }
+  .v5-light .snippet { background: #FFFFFF; border-color: #E2E8F0; }
+  .v5-light .row {
+    background: #F8FAFC; border-color: #E2E8F0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .v5-light .row .pair { font-family: inherit; font-size: 12.5px; }
+  .v5-light .row .sub { font-family: inherit; }
+  .v5-light .sub, .v5-light .last-fwd { color: #475569; }
+  .v5-light .arrow { color: #94A3B8; }
+  .v5-light .filters svg { color: #94A3B8; }
+  .v5-light .icon-btn { background: #FFFFFF; border-color: #E2E8F0; color: #475569; }
+  .v5-light .pill.success {
+    background: #F0FDF4; border-color: #BBF7D0; color: #166534;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .v5-light .pill.success .pill-dot { background: #16A34A; }
+  .v5-light .btn-primary {
+    background: #15803D; color: #FFFFFF;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .v5-light .toggle { background: #15803D; }
+
+  .v5-dark {
+    background: #020617; color: #CBD5E1;
+    border-color: #1E293B;
+  }
+  .v5-dark .snippet { background: #0B1220; border-color: #1E293B; }
+  .v5-dark .row {
+    background: #07101F; border-color: #1E293B;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .v5-dark .row .pair {
+    font-family: inherit; font-size: 12.5px; color: #4ADE80;
+  }
+  .v5-dark .row .sub { font-family: inherit; }
+  .v5-dark .sub, .v5-dark .last-fwd { color: #64748B; }
+  .v5-dark .arrow { color: #475569; }
+  .v5-dark .filters svg { color: #475569; }
+  .v5-dark .icon-btn { background: #0B1220; border-color: #25334D; color: #94A3B8; }
+  .v5-dark .pill.success {
+    background: rgba(74,222,128,0.10); border-color: rgba(74,222,128,0.40);
+    color: #4ADE80;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .v5-dark .pill.success .pill-dot {
+    background: #4ADE80; box-shadow: 0 0 6px rgba(74,222,128,0.7);
+  }
+  .v5-dark .btn-primary {
+    background: #4ADE80; color: #052E16;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    text-shadow: 0 0 6px rgba(74,222,128,0.25);
+  }
+  .v5-dark .toggle {
+    background: #4ADE80; box-shadow: 0 0 8px rgba(74,222,128,0.45);
+  }
+
+  /* layout helpers */
+  .stack-12 > * + * { margin-top: 12px; }
+  .stack-14 > * + * { margin-top: 14px; }
+  .muted-strong { font-weight: 500; }
+</style>
+</head>
+<body>
+  <div class="page">
+
+    <div class="page-head">
+      <h1>Forward Bot — Accent color exploration</h1>
+      <p>
+        Five accent personalities on a shadcn/ui + Tailwind base, each
+        shown in both light and dark modes. Neutral tint is paired to the
+        accent (slate, zinc, stone) — same shadcn primitives, different
+        register.
+      </p>
+    </div>
+
+    <!-- ========== VARIATION 1: Telegram Blue ========== -->
+    <section class="variation">
+      <div class="variation-head">
+        <div class="variation-title">
+          <h2>1 · Telegram Blue</h2>
+          <span class="hex">#2AABEE</span>
+          <span class="register">— of course it's blue, we forward Telegram messages.</span>
+        </div>
+        <span class="hex">cool slate neutral</span>
+      </div>
+      <div class="modes">
+
+        <!-- LIGHT -->
+        <div class="mode v1-light">
+          <div class="mode-label"><span class="dot" style="background:#FAFAFA;border:1px solid #E2E8F0"></span>LIGHT</div>
+          <div class="tokens">
+            <span class="token"><span class="swatch" style="background:#FAFAFA"></span>bg #FAFAFA</span>
+            <span class="token"><span class="swatch" style="background:#F1F5F9"></span>bg-muted #F1F5F9</span>
+            <span class="token"><span class="swatch" style="background:#E2E8F0"></span>border #E2E8F0</span>
+            <span class="token"><span class="swatch" style="background:#0F172A"></span>text #0F172A</span>
+            <span class="token"><span class="swatch" style="background:#64748B"></span>text-muted #64748B</span>
+            <span class="token"><span class="swatch" style="background:#2AABEE"></span>accent #2AABEE</span>
+            <span class="token"><span class="swatch" style="background:#1D8FCC"></span>accent-hover #1D8FCC</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>success #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>warning #D97706</span>
+            <span class="token"><span class="swatch" style="background:#DC2626"></span>error #DC2626</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle" aria-label="active"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- DARK -->
+        <div class="mode v1-dark">
+          <div class="mode-label" style="color:#94A3B8"><span class="dot" style="background:#0B1220;border:1px solid #1F2A44"></span>DARK</div>
+          <div class="tokens">
+            <span class="token dark"><span class="swatch" style="background:#0B1220"></span>bg #0B1220</span>
+            <span class="token dark"><span class="swatch" style="background:#131C2E"></span>bg-muted #131C2E</span>
+            <span class="token dark"><span class="swatch" style="background:#1F2A44"></span>border #1F2A44</span>
+            <span class="token dark"><span class="swatch" style="background:#E2E8F0"></span>text #E2E8F0</span>
+            <span class="token dark"><span class="swatch" style="background:#94A3B8"></span>text-muted #94A3B8</span>
+            <span class="token dark"><span class="swatch" style="background:#2AABEE"></span>accent #2AABEE</span>
+            <span class="token dark"><span class="swatch" style="background:#5BBCF2"></span>accent-hover #5BBCF2</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>success #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>warning #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#EF4444"></span>error #EF4444</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle" aria-label="active"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== VARIATION 2: Forwarding Green ========== -->
+    <section class="variation">
+      <div class="variation-head">
+        <div class="variation-title">
+          <h2>2 · Forwarding Green</h2>
+          <span class="hex">#16A34A</span>
+          <span class="register">— active / flowing / signal-is-good; pipeline running.</span>
+        </div>
+        <span class="hex">warm zinc / stone neutral</span>
+      </div>
+      <div class="modes">
+
+        <div class="mode v2-light">
+          <div class="mode-label"><span class="dot" style="background:#FAFAF9;border:1px solid #E7E5E0"></span>LIGHT</div>
+          <div class="tokens">
+            <span class="token"><span class="swatch" style="background:#FAFAF9"></span>bg #FAFAF9</span>
+            <span class="token"><span class="swatch" style="background:#F4F4F2"></span>bg-muted #F4F4F2</span>
+            <span class="token"><span class="swatch" style="background:#E7E5E0"></span>border #E7E5E0</span>
+            <span class="token"><span class="swatch" style="background:#1C1917"></span>text #1C1917</span>
+            <span class="token"><span class="swatch" style="background:#78716C"></span>text-muted #78716C</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>accent #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#15803D"></span>accent-hover #15803D</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>success #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>warning #D97706</span>
+            <span class="token"><span class="swatch" style="background:#DC2626"></span>error #DC2626</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mode v2-dark">
+          <div class="mode-label" style="color:#A8A29E"><span class="dot" style="background:#14130F;border:1px solid #2A2823"></span>DARK</div>
+          <div class="tokens">
+            <span class="token dark"><span class="swatch" style="background:#14130F"></span>bg #14130F</span>
+            <span class="token dark"><span class="swatch" style="background:#1C1B16"></span>bg-muted #1C1B16</span>
+            <span class="token dark"><span class="swatch" style="background:#2A2823"></span>border #2A2823</span>
+            <span class="token dark"><span class="swatch" style="background:#E7E5E0"></span>text #E7E5E0</span>
+            <span class="token dark"><span class="swatch" style="background:#A8A29E"></span>text-muted #A8A29E</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>accent #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#16A34A"></span>accent-hover #16A34A</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>success #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>warning #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#EF4444"></span>error #EF4444</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== VARIATION 3: Amber Operator ========== -->
+    <section class="variation">
+      <div class="variation-head">
+        <div class="variation-title">
+          <h2>3 · Amber Operator</h2>
+          <span class="hex">#D97706</span>
+          <span class="register">— ops console, production-grade, Datadog-adjacent warmth.</span>
+        </div>
+        <span class="hex">stone neutral</span>
+      </div>
+      <div class="modes">
+
+        <div class="mode v3-light">
+          <div class="mode-label"><span class="dot" style="background:#FAFAF9;border:1px solid #E7E5E4"></span>LIGHT</div>
+          <div class="tokens">
+            <span class="token"><span class="swatch" style="background:#FAFAF9"></span>bg #FAFAF9</span>
+            <span class="token"><span class="swatch" style="background:#F5F5F4"></span>bg-muted #F5F5F4</span>
+            <span class="token"><span class="swatch" style="background:#E7E5E4"></span>border #E7E5E4</span>
+            <span class="token"><span class="swatch" style="background:#1C1917"></span>text #1C1917</span>
+            <span class="token"><span class="swatch" style="background:#78716C"></span>text-muted #78716C</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>accent #D97706</span>
+            <span class="token"><span class="swatch" style="background:#B45309"></span>accent-hover #B45309</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>success #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>warning #D97706</span>
+            <span class="token"><span class="swatch" style="background:#DC2626"></span>error #DC2626</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mode v3-dark">
+          <div class="mode-label" style="color:#A8A29E"><span class="dot" style="background:#1A1612;border:1px solid #34291F"></span>DARK</div>
+          <div class="tokens">
+            <span class="token dark"><span class="swatch" style="background:#1A1612"></span>bg #1A1612</span>
+            <span class="token dark"><span class="swatch" style="background:#211C16"></span>bg-muted #211C16</span>
+            <span class="token dark"><span class="swatch" style="background:#34291F"></span>border #34291F</span>
+            <span class="token dark"><span class="swatch" style="background:#F5F5F4"></span>text #F5F5F4</span>
+            <span class="token dark"><span class="swatch" style="background:#A8A29E"></span>text-muted #A8A29E</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>accent #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#D97706"></span>accent-hover #D97706</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>success #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>warning #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#EF4444"></span>error #EF4444</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== VARIATION 4: Engineering Indigo ========== -->
+    <section class="variation">
+      <div class="variation-head">
+        <div class="variation-title">
+          <h2>4 · Engineering Indigo</h2>
+          <span class="hex">#6366F1</span>
+          <span class="register">— Linear / Vercel-adjacent; quiet engineer's-tool default.</span>
+        </div>
+        <span class="hex">zinc neutral</span>
+      </div>
+      <div class="modes">
+
+        <div class="mode v4-light">
+          <div class="mode-label"><span class="dot" style="background:#FAFAFA;border:1px solid #E4E4E7"></span>LIGHT</div>
+          <div class="tokens">
+            <span class="token"><span class="swatch" style="background:#FAFAFA"></span>bg #FAFAFA</span>
+            <span class="token"><span class="swatch" style="background:#F4F4F5"></span>bg-muted #F4F4F5</span>
+            <span class="token"><span class="swatch" style="background:#E4E4E7"></span>border #E4E4E7</span>
+            <span class="token"><span class="swatch" style="background:#18181B"></span>text #18181B</span>
+            <span class="token"><span class="swatch" style="background:#71717A"></span>text-muted #71717A</span>
+            <span class="token"><span class="swatch" style="background:#6366F1"></span>accent #6366F1</span>
+            <span class="token"><span class="swatch" style="background:#4F46E5"></span>accent-hover #4F46E5</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>success #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>warning #D97706</span>
+            <span class="token"><span class="swatch" style="background:#DC2626"></span>error #DC2626</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mode v4-dark">
+          <div class="mode-label" style="color:#A1A1AA"><span class="dot" style="background:#0A0A0B;border:1px solid #26262A"></span>DARK</div>
+          <div class="tokens">
+            <span class="token dark"><span class="swatch" style="background:#0A0A0B"></span>bg #0A0A0B</span>
+            <span class="token dark"><span class="swatch" style="background:#131316"></span>bg-muted #131316</span>
+            <span class="token dark"><span class="swatch" style="background:#26262A"></span>border #26262A</span>
+            <span class="token dark"><span class="swatch" style="background:#E4E4E7"></span>text #E4E4E7</span>
+            <span class="token dark"><span class="swatch" style="background:#A1A1AA"></span>text-muted #A1A1AA</span>
+            <span class="token dark"><span class="swatch" style="background:#818CF8"></span>accent #818CF8</span>
+            <span class="token dark"><span class="swatch" style="background:#6366F1"></span>accent-hover #6366F1</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>success #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>warning #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#EF4444"></span>error #EF4444</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3>Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>Telegram connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                New forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">Crypto Signals Pro <span class="arrow">&rarr;</span> My Crypto Hub</div>
+                <div class="sub">3 filters active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">2m ago</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========== VARIATION 5: Terminal Green-on-Slate ========== -->
+    <section class="variation">
+      <div class="variation-head">
+        <div class="variation-title">
+          <h2>5 · Terminal Green-on-Slate</h2>
+          <span class="hex">#4ADE80 / #15803D</span>
+          <span class="register">— ops-room flavor, slight CRT energy, monospace row data.</span>
+        </div>
+        <span class="hex">very dark slate neutral</span>
+      </div>
+      <div class="modes">
+
+        <div class="mode v5-light">
+          <div class="mode-label"><span class="dot" style="background:#F8FAFC;border:1px solid #E2E8F0"></span>LIGHT</div>
+          <div class="tokens">
+            <span class="token"><span class="swatch" style="background:#F8FAFC"></span>bg #F8FAFC</span>
+            <span class="token"><span class="swatch" style="background:#F1F5F9"></span>bg-muted #F1F5F9</span>
+            <span class="token"><span class="swatch" style="background:#E2E8F0"></span>border #E2E8F0</span>
+            <span class="token"><span class="swatch" style="background:#0F172A"></span>text #0F172A</span>
+            <span class="token"><span class="swatch" style="background:#475569"></span>text-muted #475569</span>
+            <span class="token"><span class="swatch" style="background:#15803D"></span>accent #15803D</span>
+            <span class="token"><span class="swatch" style="background:#166534"></span>accent-hover #166534</span>
+            <span class="token"><span class="swatch" style="background:#16A34A"></span>success #16A34A</span>
+            <span class="token"><span class="swatch" style="background:#D97706"></span>warning #D97706</span>
+            <span class="token"><span class="swatch" style="background:#DC2626"></span>error #DC2626</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3 style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>telegram.connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                new forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">crypto_signals_pro <span class="arrow">&gt;&gt;</span> my_crypto_hub</div>
+                <div class="sub">filters: 3 active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">+2m</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mode v5-dark">
+          <div class="mode-label" style="color:#64748B"><span class="dot" style="background:#020617;border:1px solid #1E293B"></span>DARK</div>
+          <div class="tokens">
+            <span class="token dark"><span class="swatch" style="background:#020617"></span>bg #020617</span>
+            <span class="token dark"><span class="swatch" style="background:#0B1220"></span>bg-muted #0B1220</span>
+            <span class="token dark"><span class="swatch" style="background:#1E293B"></span>border #1E293B</span>
+            <span class="token dark"><span class="swatch" style="background:#CBD5E1"></span>text #CBD5E1</span>
+            <span class="token dark"><span class="swatch" style="background:#64748B"></span>text-muted #64748B</span>
+            <span class="token dark"><span class="swatch" style="background:#4ADE80"></span>accent #4ADE80</span>
+            <span class="token dark"><span class="swatch" style="background:#22C55E"></span>accent-hover #22C55E</span>
+            <span class="token dark"><span class="swatch" style="background:#4ADE80"></span>success #4ADE80</span>
+            <span class="token dark"><span class="swatch" style="background:#F59E0B"></span>warning #F59E0B</span>
+            <span class="token dark"><span class="swatch" style="background:#EF4444"></span>error #EF4444</span>
+          </div>
+
+          <div class="snippet">
+            <div class="top-row">
+              <div class="left">
+                <h3 style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#E2E8F0">Forwards</h3>
+                <span class="pill success"><span class="pill-dot"></span>telegram.connected</span>
+              </div>
+              <button class="btn-primary">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M3 8h10"/></svg>
+                new forward
+              </button>
+            </div>
+            <div class="row">
+              <span class="toggle"></span>
+              <div class="info">
+                <div class="pair">crypto_signals_pro <span class="arrow">&gt;&gt;</span> my_crypto_hub</div>
+                <div class="sub">filters: 3 active</div>
+              </div>
+              <span class="filters" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>
+              </span>
+              <span class="last-fwd">+2m</span>
+              <span class="actions">
+                <span class="icon-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg></span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>
