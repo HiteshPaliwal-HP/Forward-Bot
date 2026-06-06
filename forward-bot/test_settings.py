@@ -1,6 +1,6 @@
 import os
 os.environ["MONGO_URI"] = "not-a-valid-uri"
-from forward_bot.settings import Settings
+from forward_bot.config import Settings
 s = Settings()
 print(f"Loaded MongoDB URI: {s.mongo_uri}")
 

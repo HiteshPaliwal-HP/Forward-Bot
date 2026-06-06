@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from forward_bot.settings import Settings
+from forward_bot.config import Settings
 
 
 def create_app(settings: Settings | None = None, lifespan = None) -> FastAPI:
@@ -16,6 +16,8 @@ def create_app(settings: Settings | None = None, lifespan = None) -> FastAPI:
         description="Self-hosted Telegram forwarding worker with operator dashboard",
         lifespan=lifespan,
     )
+    app.state.settings = settings
+
 
     # Configure CORS for frontend
     app.add_middleware(
