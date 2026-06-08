@@ -183,3 +183,7 @@ Desktop.ini
 # BMAD and tool patches / backups
 *.patch
 *.bak
+
+# Local test and helper scripts
+test_db.py
+gen_prompts.py

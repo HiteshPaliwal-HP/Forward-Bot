@@ -2,6 +2,7 @@
 from typing import Any
 from fastapi import APIRouter, Response, status
 from forward_bot.infrastructure.mongo import mongo_client
+from forward_bot.infrastructure.telegram import telegram_client
 from forward_bot.infrastructure.logging import logger
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -33,5 +34,8 @@ async def readiness_check(response: Response) -> dict[str, str]:
 
 @router.get("/telegram", status_code=status.HTTP_200_OK)
 async def telegram_status() -> dict[str, Any]:
-    """Telegram connection status stub."""
-    return {"telegram": "disconnected", "last_event": None}
+    """Telegram connection status."""
+    return {
+        "telegram": telegram_client.status,
+        "last_event": telegram_client.last_event
+    }

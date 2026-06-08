@@ -25,6 +25,9 @@ dependencies = [
 ]
 
 
+[project.scripts]
+forward-bot-auth = "forward_bot.__main__:run_auth"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/forward_bot"]
 

@@ -3,7 +3,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     )
     mongo_uri: str = Field(
         description="MongoDB connection URI (required)",
+    )
+    telegram_api_id: int = Field(
+        description="Telegram API ID for MTProto client connection (required)",
+        validation_alias=AliasChoices("telegram_api_id", "api_id"),
+    )
+    telegram_api_hash: str = Field(
+        description="Telegram API Hash for MTProto client connection (required)",
+        validation_alias=AliasChoices("telegram_api_hash", "api_hash"),
     )
 
     # Telegram

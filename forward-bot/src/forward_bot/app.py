@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 
 from forward_bot.config import Settings
 from forward_bot.infrastructure.mongo import mongo_client
+from forward_bot.infrastructure.telegram import telegram_client
 from forward_bot.infrastructure.logging import logger
 from forward_bot.tasks import run_cache_refresher, run_mapping_sweeper, run_telegram_worker
 from forward_bot.api.routers.health import router as health_router
@@ -39,6 +40,15 @@ async def default_lifespan(app: FastAPI):
         logger.critical("mongodb_startup_check_failed", error=str(e), message="MongoDB startup connection check failed or timed out")
         raise RuntimeError("MongoDB startup connection check failed or timed out") from e
 
+    # Connect to Telegram
+    try:
+        await telegram_client.connect(settings)
+    except Exception as e:
+        logger.critical("telegram_connection_failed", error=str(e), message="Telegram client startup check failed or timed out")
+        # Clean up database client
+        mongo_client.close()
+        raise e
+
     # Start background task stubs
     cache_task = asyncio.create_task(run_cache_refresher())
     sweeper_task = asyncio.create_task(run_mapping_sweeper())
@@ -56,6 +66,9 @@ async def default_lifespan(app: FastAPI):
         # Await tasks cancellation
         await asyncio.gather(cache_task, sweeper_task, worker_task, return_exceptions=True)
         
+        # Disconnect from Telegram
+        await telegram_client.disconnect()
+
         # Close MongoDB connection
         mongo_client.close()
         logger.info("app_stopped", message="Forward Bot stopped")
