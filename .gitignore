@@ -179,3 +179,7 @@ Desktop.ini
 /.agents
 .claude/settings.local.json
 /.claude
+
+# BMAD and tool patches / backups
+*.patch
+*.bak

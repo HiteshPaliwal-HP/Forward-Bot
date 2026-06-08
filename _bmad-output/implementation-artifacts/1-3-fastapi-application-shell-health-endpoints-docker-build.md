@@ -1,6 +1,12 @@
+---
+baseline_commit: '0e07875ff0e11a9b7f11396deb8007b96bbfb414'
+status: 'review'
+completedAt: '2026-06-08'
+---
+
 # Story 1.3: FastAPI Application Shell, Health Endpoints & Docker Build
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -108,23 +114,28 @@ so that **I can verify the service is running and deploy it to my VPS with `dock
 
 ## Tasks / Subtasks
 
-- [ ] Implement FastAPI Application Shell & Health Routers (AC: 1, 2, 3)
-  - [ ] Add `/health` returning `{"status": "ok"}`
-  - [ ] Add `/health/ready` verifying MongoDB connectivity
-  - [ ] Add `/health/telegram` stub returning disconnected
-- [ ] Implement Lifespan and Startup Database Verifier (AC: 4)
-  - [ ] Initialize MongoDB client connection in lifespan
-  - [ ] Setup background task stubs (`cache_refresher`, `mapping_sweeper`, `telegram_worker`)
-  - [ ] Add 30-second timeout checks on MongoDB connectivity at startup
-- [ ] Setup Web Static Files Serving (AC: 5)
-  - [ ] Mount `StaticFiles` for `/static` when `ui_enabled=True`
-  - [ ] Add catch-all SPA fallback route to serve `index.html`
-- [ ] Configure Docker & Compose Deployment (AC: 5, 6)
-  - [ ] Create multi-stage `Dockerfile` (Node compiler stage + Python runtime stage)
-  - [ ] Create `docker-compose.yml` with MongoDB and persistent volume mounts
-  - [ ] Create `Makefile` with `build`, `run`, and `auth` targets
-- [ ] Add API Verification and Integration Tests (AC: 7)
-  - [ ] Write tests under `tests/api/test_health.py` for health endpoints using `httpx.AsyncClient`
+- [x] Implement FastAPI Application Shell & Health Routers (AC: 1, 2, 3)
+  - [x] Add `/health` returning `{"status": "ok"}`
+  - [x] Add `/health/ready` verifying MongoDB connectivity
+  - [x] Add `/health/telegram` stub returning disconnected
+- [x] Implement Lifespan and Startup Database Verifier (AC: 4)
+  - [x] Initialize MongoDB client connection in lifespan
+  - [x] Setup background task stubs (`cache_refresher`, `mapping_sweeper`, `telegram_worker`)
+  - [x] Add 30-second timeout checks on MongoDB connectivity at startup
+- [x] Setup Web Static Files Serving (AC: 5)
+  - [x] Mount `StaticFiles` for `/static` when `ui_enabled=True`
+  - [x] Add catch-all SPA fallback route to serve `index.html`
+- [x] Configure Docker & Compose Deployment (AC: 5, 6)
+  - [x] Create multi-stage `Dockerfile` (Node compiler stage + Python runtime stage)
+  - [x] Create `docker-compose.yml` with MongoDB and persistent volume mounts
+  - [x] Create `Makefile` with `build`, `run`, and `auth` targets
+- [x] Add API Verification and Integration Tests (AC: 7)
+  - [x] Write tests under `tests/api/test_health.py` for health endpoints using `httpx.AsyncClient`
+
+### Review Findings
+
+- [x] [Review][Patch] Avoid `sys.exit(1)` in ASGI lifespan [forward-bot/src/forward_bot/app.py:23]
+- [x] [Review][Patch] Use `settings.bind_host` and `settings.port` for Uvicorn binding instead of hardcoding [Dockerfile:40]
 
 ## Dev Agent Record
 
@@ -136,11 +147,25 @@ Gemini 3.5 Flash (Medium)
 
 ### Completion Notes List
 
+- Designed and implemented liveness, readiness, and telegram health check routes in `src/forward_bot/api/routers/health.py`
+- Mounted UI serving router structure and static files with catch-all fallback inside `src/forward_bot/app.py`
+- Configured application default lifespan handling startup MongoDB client connecting, 30s connection timeout fail-fast check, and background task stub initialization
+- Added `run_cache_refresher`, `run_mapping_sweeper`, and `run_telegram_worker` background task stubs in `src/forward_bot/tasks.py`
+- Wrote extensive tests covering all health check endpoints using HTTPX AsyncClient and mocking in `tests/api/test_health.py`
+- Crafted a multi-stage Docker build config compiling frontend SPA and setting up Python runtime environment via uv
+- Wrote Makefile containing build, run, and auth actions, and docker-compose configurations with volume persistent bindings
+
 ### File List
 
-- [NEW] [main.py](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/forward-bot/src/forward_bot/main.py)
-- [MODIFY] [app.py](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/forward-bot/src/forward_bot/app.py)
-- [NEW] [test_health.py](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/forward-bot/tests/api/test_health.py)
-- [NEW] [Dockerfile](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/Dockerfile)
-- [NEW] [docker-compose.yml](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/docker-compose.yml)
-- [NEW] [Makefile](file:///c:/Users/Hitesh%20-%20HP/OneDrive/Documents/Github/Forward-Bot/Makefile)
+- [NEW] [main.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/main.py)
+- [MODIFY] [app.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/app.py)
+- [NEW] [tasks.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/tasks.py)
+- [NEW] [test_health.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_health.py)
+- [NEW] [Dockerfile](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/Dockerfile)
+- [NEW] [docker-compose.yml](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/docker-compose.yml)
+- [NEW] [Makefile](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/Makefile)
+
+## Change Log
+
+- **2026-06-08**: Completed implementation of Story 1.3. Created health check API routers, added lifespan connection timeouts and background task stubs, configured multi-stage Docker build, and setup compose configuration and Makefile.
+
