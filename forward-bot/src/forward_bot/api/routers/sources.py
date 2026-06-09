@@ -1,11 +1,19 @@
 """FastAPI router for source catalog management."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query, HTTPException
 
 from forward_bot.api.dependencies.auth import get_current_operator
 from forward_bot.api.dependencies.providers import get_source_repository, get_telegram_client
-from forward_bot.api.schemas.source import SourceRegisterRequest, SourceResponse
+from forward_bot.api.schemas.source import (
+    SourceRegisterRequest,
+    SourceResponse,
+    SourcesPagedResponse,
+    SourceUpdateRequest,
+    SourcePatchRequest,
+)
 from forward_bot.application.sources.register_source import RegisterSource
 from forward_bot.application.sources.delete_source import DeleteSource
+from forward_bot.application.sources.list_sources import ListSources
+from forward_bot.application.sources.update_source import UpdateSource
 from forward_bot.domain.exceptions import SourceNotFoundException
 from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
 from forward_bot.infrastructure.telegram.client import TelegramClientHolder
@@ -65,3 +73,107 @@ async def delete_source(
     """Delete a registered source if it is not currently referenced by any forwarding rules."""
     use_case = DeleteSource(source_repo)
     await use_case.execute(source_id)
+
+
+@router.get(
+    "",
+    response_model=SourcesPagedResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List all registered sources with pagination and filters."
+)
+async def list_sources(
+    type: str | None = Query(None),
+    folder_id: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1),
+    source_repo: SourceRepository = Depends(get_source_repository),
+    _: str = Depends(get_current_operator),
+) -> SourcesPagedResponse:
+    # Validate type
+    if type is not None and type not in ("channel", "group"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Type must be strictly 'channel' or 'group'."
+        )
+
+    # Validate folder_id format
+    if folder_id is not None and folder_id != "null":
+        from bson import ObjectId
+        if not ObjectId.is_valid(folder_id):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid folder_id format."
+            )
+
+    # Enforce page size limit: capped at 200
+    page_size = min(page_size, 200)
+
+    use_case = ListSources(source_repo)
+    items, total = await use_case.execute(
+        filter_type=type,
+        folder_id=folder_id,
+        page=page,
+        page_size=page_size
+    )
+
+    return SourcesPagedResponse(
+        items=[SourceResponse.from_entity(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size
+    )
+
+
+@router.put(
+    "/{source_id}",
+    response_model=SourceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update a registered source entirely."
+)
+async def update_source(
+    source_id: str,
+    payload: SourceUpdateRequest,
+    source_repo: SourceRepository = Depends(get_source_repository),
+    _: str = Depends(get_current_operator),
+) -> SourceResponse:
+    # Validate source_id validity
+    from bson import ObjectId
+    if not ObjectId.is_valid(source_id):
+        raise SourceNotFoundException(source_id)
+
+    use_case = UpdateSource(source_repo)
+    update_fields = payload.model_dump()
+    source = await use_case.execute(
+        source_id=source_id,
+        update_fields=update_fields,
+        partial=False
+    )
+    return SourceResponse.from_entity(source)
+
+
+@router.patch(
+    "/{source_id}",
+    response_model=SourceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update a registered source."
+)
+async def patch_source(
+    source_id: str,
+    payload: SourcePatchRequest,
+    source_repo: SourceRepository = Depends(get_source_repository),
+    _: str = Depends(get_current_operator),
+) -> SourceResponse:
+    # Validate source_id validity
+    from bson import ObjectId
+    if not ObjectId.is_valid(source_id):
+        raise SourceNotFoundException(source_id)
+
+    use_case = UpdateSource(source_repo)
+    update_fields = payload.model_dump(exclude_unset=True)
+    source = await use_case.execute(
+        source_id=source_id,
+        update_fields=update_fields,
+        partial=True
+    )
+    return SourceResponse.from_entity(source)
+

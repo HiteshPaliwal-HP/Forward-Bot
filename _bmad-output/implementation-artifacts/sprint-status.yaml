@@ -60,7 +60,7 @@ development_status:
   epic-2: in-progress
 
   2-1-source-registration-retrieval: done
-  2-2-source-listing-updates: ready-for-dev
+  2-2-source-listing-updates: done
   2-3-folder-crud: backlog
 
   epic-2-retrospective: optional
@@ -118,10 +118,10 @@ summary:
   epics_done: 1
 
   stories_backlog: 19
-  stories_ready_for_dev: 1
+  stories_ready_for_dev: 0
   stories_in_progress: 0
   stories_in_review: 0
-  stories_done: 5
+  stories_done: 6
 
   retrospectives_optional: 5
   retrospectives_done: 1

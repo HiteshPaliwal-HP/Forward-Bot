@@ -124,6 +124,8 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
         TelegramResolveFailedException,
         SourceNotFoundException,
         SourceInUseException,
+        FolderNotFoundException,
+        SourceUsernameAlreadyExistsException,
     )
 
     @app.exception_handler(HTTPException)
@@ -157,6 +159,16 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
                     }
                 }
             )
+        elif isinstance(exc, SourceUsernameAlreadyExistsException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "source_already_exists",
+                        "message": f"Source with username {exc.username} already exists."
+                    }
+                }
+            )
         elif isinstance(exc, TelegramResolveFailedException):
             return JSONResponse(
                 status_code=422,
@@ -184,6 +196,16 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
                     "error": {
                         "code": "source_in_use",
                         "message": f"Source {exc.source_id} is referenced by {exc.rule_count} rules."
+                    }
+                }
+            )
+        elif isinstance(exc, FolderNotFoundException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "folder_not_found",
+                        "message": f"Folder with ID {exc.folder_id} does not exist."
                     }
                 }
             )

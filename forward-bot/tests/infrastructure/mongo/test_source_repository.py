@@ -103,3 +103,96 @@ async def test_get_referencing_rules_count():
     assert count == 3
     mock_db.__getitem__.assert_called_with("forwarding_rules")
     mock_collection.count_documents.assert_called_once_with({"source_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e")})
+
+
+@pytest.mark.asyncio
+async def test_source_repository_extended():
+    """Verify list_sources, update_source, and folder_exists methods of SourceRepository."""
+    mock_db = MagicMock()
+    mock_collection = AsyncMock()
+    
+    # Configure mock_db so that accessing collections returns correct mocks
+    collections = {
+        "sources": mock_collection,
+        "source_folders": AsyncMock()
+    }
+    mock_db.__getitem__.side_effect = lambda name: collections[name]
+
+    repo = SourceRepository(mock_db)
+
+    # 1. Test folder_exists
+    folder_mock = collections["source_folders"]
+    folder_mock.find_one.return_value = {"_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e"), "name": "Test Folder"}
+    exists = await repo.folder_exists("65c52c6f1f2e3d4a5b6c7d8e")
+    assert exists is True
+    folder_mock.find_one.assert_called_with({"_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e")})
+
+    exists_invalid = await repo.folder_exists("invalid-id")
+    assert exists_invalid is False
+
+    folder_mock.find_one.return_value = None
+    exists_none = await repo.folder_exists("65c52c6f1f2e3d4a5b6c7d8e")
+    assert exists_none is False
+
+    # 2. Test update_source
+    source = Source(
+        id="65c52c6f1f2e3d4a5b6c7d8e",
+        telegram_id=987654,
+        telegram_username="my_channel",
+        display_name="Updated Name",
+        type="channel",
+        folder_id=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    mock_replace_result = MagicMock()
+    mock_replace_result.modified_count = 1
+    mock_collection.replace_one.return_value = mock_replace_result
+    
+    updated = await repo.update_source(source)
+    assert updated is True
+    mock_collection.replace_one.assert_called_once()
+
+    # 3. Test list_sources
+    mock_collection.count_documents.return_value = 1
+    
+    mock_cursor = MagicMock()
+    mock_cursor.sort.return_value = mock_cursor
+    mock_cursor.skip.return_value = mock_cursor
+    mock_cursor.limit.return_value = mock_cursor
+    
+    # Mock to_list on cursor
+    mock_doc = {
+        "_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e"),
+        "telegram_id": 987654,
+        "telegram_username": "my_channel",
+        "display_name": "My Channel",
+        "type": "channel",
+        "folder_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8a"),
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    mock_cursor.to_list = AsyncMock(return_value=[mock_doc])
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    # Call list_sources with pagination and filters
+    items, total = await repo.list_sources(
+        filter_type="channel",
+        folder_id="65c52c6f1f2e3d4a5b6c7d8a",
+        page=2,
+        page_size=10
+    )
+    assert total == 1
+    assert len(items) == 1
+    assert items[0].id == "65c52c6f1f2e3d4a5b6c7d8e"
+    assert items[0].folder_id == "65c52c6f1f2e3d4a5b6c7d8a"
+
+    # Verify query generated
+    mock_collection.find.assert_called_with({
+        "type": "channel",
+        "folder_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8a")
+    })
+    mock_cursor.sort.assert_called_with("created_at", -1)
+    mock_cursor.skip.assert_called_with(10)
+    mock_cursor.limit.assert_called_with(10)
+

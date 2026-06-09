@@ -334,3 +334,305 @@ async def test_delete_source_in_use_rejection(app):
     assert data["error"]["code"] == "source_in_use"
     assert "referenced by 5 rules" in data["error"]["message"]
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_sources_success(app):
+    """Verify list of registered sources with pagination and default envelopes."""
+    mock_repo = MagicMock()
+    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+    mock_sources = [
+        Source(
+            id="65c52c6f1f2e3d4a5b6c7d8e",
+            telegram_id=111,
+            telegram_username="source1",
+            display_name="Source One",
+            type="channel",
+            folder_id="65c52c6f1f2e3d4a5b6c7d8a",
+            created_at=now,
+            updated_at=now,
+        )
+    ]
+    mock_repo.list_sources = AsyncMock(return_value=(mock_sources, 100))
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Default pagination
+        res = await ac.get("/api/v1/sources", headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total"] == 100
+        assert data["page"] == 1
+        assert data["page_size"] == 50
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
+        mock_repo.list_sources.assert_called_with(
+            filter_type=None,
+            folder_id=None,
+            page=1,
+            page_size=50
+        )
+
+        # 2. Specific pagination
+        res2 = await ac.get("/api/v1/sources?page=2&page_size=10", headers=headers)
+        assert res2.status_code == 200
+        data2 = res2.json()
+        assert data2["page"] == 2
+        assert data2["page_size"] == 10
+        mock_repo.list_sources.assert_called_with(
+            filter_type=None,
+            folder_id=None,
+            page=2,
+            page_size=10
+        )
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_sources_page_size_cap(app):
+    """Verify page_size is capped at 200."""
+    mock_repo = MagicMock()
+    mock_repo.list_sources = AsyncMock(return_value=([], 0))
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.get("/api/v1/sources?page_size=500", headers=headers)
+        assert res.status_code == 200
+        mock_repo.list_sources.assert_called_with(
+            filter_type=None,
+            folder_id=None,
+            page=1,
+            page_size=200
+        )
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_sources_filtering(app):
+    """Verify filtering of sources by type and folder."""
+    mock_repo = MagicMock()
+    mock_repo.list_sources = AsyncMock(return_value=([], 0))
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Filtering by type
+        await ac.get("/api/v1/sources?type=channel", headers=headers)
+        mock_repo.list_sources.assert_called_with(
+            filter_type="channel",
+            folder_id=None,
+            page=1,
+            page_size=50
+        )
+
+        # Filtering by folder
+        await ac.get("/api/v1/sources?folder_id=65c52c6f1f2e3d4a5b6c7d8a", headers=headers)
+        mock_repo.list_sources.assert_called_with(
+            filter_type=None,
+            folder_id="65c52c6f1f2e3d4a5b6c7d8a",
+            page=1,
+            page_size=50
+        )
+
+        # Filtering by folder null
+        await ac.get("/api/v1/sources?folder_id=null", headers=headers)
+        mock_repo.list_sources.assert_called_with(
+            filter_type=None,
+            folder_id="null",
+            page=1,
+            page_size=50
+        )
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_sources_invalid_inputs(app):
+    """Verify 422 returned for invalid filter parameters."""
+    headers = {"X-API-Key": "valid-api-key"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Invalid type
+        res1 = await ac.get("/api/v1/sources?type=invalid_type", headers=headers)
+        assert res1.status_code == 422
+
+        # Invalid folder_id
+        res2 = await ac.get("/api/v1/sources?folder_id=invalid_hex", headers=headers)
+        assert res2.status_code == 422
+
+        # Invalid page (negative)
+        res3 = await ac.get("/api/v1/sources?page=0", headers=headers)
+        assert res3.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_source_success(app):
+    """Verify successful full update of a source via PUT."""
+    mock_repo = MagicMock()
+    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+    existing_source = Source(
+        id="65c52c6f1f2e3d4a5b6c7d8e",
+        telegram_id=123,
+        telegram_username="old_username",
+        display_name="Old Name",
+        type="channel",
+        folder_id=None,
+        created_at=now,
+        updated_at=now,
+    )
+    mock_repo.get_source_by_id = AsyncMock(return_value=existing_source)
+    mock_repo.folder_exists = AsyncMock(return_value=True)
+    mock_repo.get_source_by_username = AsyncMock(return_value=None)
+    mock_repo.update_source = AsyncMock(return_value=True)
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    payload = {
+        "display_name": "New Display Name",
+        "type": "group",
+        "folder_id": "65c52c6f1f2e3d4a5b6c7d8a",
+        "telegram_username": "@new_username"
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.put("/api/v1/sources/65c52c6f1f2e3d4a5b6c7d8e", json=payload, headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["display_name"] == "New Display Name"
+        assert data["type"] == "group"
+        assert data["folder_id"] == "65c52c6f1f2e3d4a5b6c7d8a"
+        assert data["telegram_username"] == "new_username"
+
+        mock_repo.folder_exists.assert_called_with("65c52c6f1f2e3d4a5b6c7d8a")
+        mock_repo.get_source_by_username.assert_called_with("new_username")
+        mock_repo.update_source.assert_called_once()
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_update_source_not_found(app):
+    """Verify PUT update returns 404 if source does not exist."""
+    mock_repo = MagicMock()
+    mock_repo.get_source_by_id = AsyncMock(return_value=None)
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    payload = {
+        "display_name": "Name",
+        "type": "channel",
+        "folder_id": None,
+        "telegram_username": None
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.put("/api/v1/sources/65c52c6f1f2e3d4a5b6c7d8e", json=payload, headers=headers)
+        assert res.status_code == 404
+        assert res.json()["error"]["code"] == "source_not_found"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_update_source_folder_not_found(app):
+    """Verify PUT update returns 422 if referenced folder does not exist."""
+    mock_repo = MagicMock()
+    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+    mock_repo.get_source_by_id = AsyncMock(return_value=Source(
+        id="65c52c6f1f2e3d4a5b6c7d8e",
+        telegram_id=123,
+        telegram_username="username",
+        display_name="Name",
+        type="channel",
+        folder_id=None,
+        created_at=now,
+        updated_at=now,
+    ))
+    mock_repo.folder_exists = AsyncMock(return_value=False)
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    payload = {
+        "display_name": "Name",
+        "type": "channel",
+        "folder_id": "65c52c6f1f2e3d4a5b6c7d8a",
+        "telegram_username": None
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.put("/api/v1/sources/65c52c6f1f2e3d4a5b6c7d8e", json=payload, headers=headers)
+        assert res.status_code == 422
+        assert res.json()["error"]["code"] == "folder_not_found"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_patch_source_success(app):
+    """Verify PATCH partial update successfully changes specified fields only."""
+    mock_repo = MagicMock()
+    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+    existing_source = Source(
+        id="65c52c6f1f2e3d4a5b6c7d8e",
+        telegram_id=123,
+        telegram_username="old_username",
+        display_name="Old Name",
+        type="channel",
+        folder_id="65c52c6f1f2e3d4a5b6c7d8a",
+        created_at=now,
+        updated_at=now,
+    )
+    mock_repo.get_source_by_id = AsyncMock(return_value=existing_source)
+    mock_repo.update_source = AsyncMock(return_value=True)
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    payload = {
+        "display_name": "Patched Display Name",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.patch("/api/v1/sources/65c52c6f1f2e3d4a5b6c7d8e", json=payload, headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["display_name"] == "Patched Display Name"
+        # Others remain unchanged
+        assert data["type"] == "channel"
+        assert data["folder_id"] == "65c52c6f1f2e3d4a5b6c7d8a"
+        assert data["telegram_username"] == "old_username"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_patch_source_duplicate_username(app):
+    """Verify PATCH username conflict returns 422 source_already_exists."""
+    mock_repo = MagicMock()
+    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+    existing_source = Source(
+        id="65c52c6f1f2e3d4a5b6c7d8e",
+        telegram_id=123,
+        telegram_username="old_username",
+        display_name="Name",
+        type="channel",
+        folder_id=None,
+        created_at=now,
+        updated_at=now,
+    )
+    other_source = Source(
+        id="65c52c6f1f2e3d4a5b6c7d8f",
+        telegram_id=456,
+        telegram_username="taken_username",
+        display_name="Other Source",
+        type="channel",
+        folder_id=None,
+        created_at=now,
+        updated_at=now,
+    )
+    mock_repo.get_source_by_id = AsyncMock(return_value=existing_source)
+    mock_repo.get_source_by_username = AsyncMock(return_value=other_source)
+    app.dependency_overrides[get_source_repository] = lambda: mock_repo
+
+    headers = {"X-API-Key": "valid-api-key"}
+    payload = {
+        "telegram_username": "@taken_username"
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.patch("/api/v1/sources/65c52c6f1f2e3d4a5b6c7d8e", json=payload, headers=headers)
+        assert res.status_code == 422
+        assert res.json()["error"]["code"] == "source_already_exists"
+    app.dependency_overrides.clear()
+

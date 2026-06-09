@@ -1,6 +1,6 @@
 """Pydantic schemas for the Source endpoints."""
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from forward_bot.api.schemas.base import MongoBaseModel
 from forward_bot.domain.entities.source import Source
@@ -44,3 +44,61 @@ class SourceResponse(MongoBaseModel):
             created_at=source.created_at,
             updated_at=source.updated_at
         )
+
+
+class SourcesPagedResponse(BaseModel):
+    """Response payload for paginated list of sources."""
+    items: list[SourceResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class SourceUpdateRequest(BaseModel):
+    """Payload for updating a Source entirely (PUT)."""
+    display_name: str = Field(..., min_length=1, max_length=100)
+    type: str = Field(..., description="Must be channel or group")
+    folder_id: str | None = Field(default=None, description="Assigned folder ID or null")
+    telegram_username: str | None = Field(default=None, description="Optional telegram username")
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in ("channel", "group"):
+            raise ValueError("Type must be strictly 'channel' or 'group'.")
+        return v
+
+    @field_validator("folder_id")
+    @classmethod
+    def validate_folder_id(cls, v: str | None) -> str | None:
+        if v is not None and v != "null":
+            from bson import ObjectId
+            if not ObjectId.is_valid(v):
+                raise ValueError("Invalid folder_id format")
+        return v
+
+
+class SourcePatchRequest(BaseModel):
+    """Payload for partially updating a Source (PATCH)."""
+    display_name: str | None = Field(default=None, min_length=1, max_length=100)
+    type: str | None = Field(default=None, description="Must be channel or group")
+    folder_id: str | None = Field(default=None, description="Assigned folder ID or null")
+    telegram_username: str | None = Field(default=None, description="Optional telegram username")
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("channel", "group"):
+            raise ValueError("Type must be strictly 'channel' or 'group'.")
+        return v
+
+    @field_validator("folder_id")
+    @classmethod
+    def validate_folder_id(cls, v: str | None) -> str | None:
+        if v is not None and v != "null":
+            from bson import ObjectId
+            if not ObjectId.is_valid(v):
+                raise ValueError("Invalid folder_id format")
+        return v
+
+

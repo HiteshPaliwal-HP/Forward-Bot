@@ -77,3 +77,46 @@ class SourceRepository(BaseRepository):
         from forward_bot.api.schemas.base import FORWARDING_RULES
         count = await self.db[FORWARDING_RULES].count_documents({"source_id": ObjectId(source_id)})
         return count
+
+    async def folder_exists(self, folder_id: str) -> bool:
+        """Check if a folder exists in the source_folders collection."""
+        if not folder_id or not ObjectId.is_valid(folder_id):
+            return False
+        from forward_bot.api.schemas.base import SOURCE_FOLDERS
+        folder = await self.db[SOURCE_FOLDERS].find_one({"_id": ObjectId(folder_id)})
+        return folder is not None
+
+    async def update_source(self, source: Source) -> bool:
+        """Update/Replace an existing Source in the database."""
+        doc = self._to_document(source)
+        return await self.update(source.id, doc)
+
+    async def list_sources(
+        self,
+        filter_type: str | None = None,
+        folder_id: str | None = None,
+        page: int = 1,
+        page_size: int = 50
+    ) -> tuple[list[Source], int]:
+        """List registered sources with pagination and filters, sorted by created_at descending."""
+        query: dict[str, Any] = {}
+        if filter_type:
+            query["type"] = filter_type
+        if folder_id is not None:
+            if folder_id == "null":
+                query["folder_id"] = None
+            elif not ObjectId.is_valid(folder_id):
+                # Note: If folder_id is an invalid ObjectId hex string, raising ValueError or handling it.
+                # Actually, the check for validity should preferably be done in the use case or schema,
+                # but if it reaches here and is invalid, let's treat it as querying for an invalid ID or raise ValueError.
+                # Let's raise ValueError to be caught.
+                raise ValueError("Invalid folder_id format")
+            else:
+                query["folder_id"] = ObjectId(folder_id)
+
+        total = await self.collection.count_documents(query)
+        cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * page_size).limit(page_size)
+        docs = await cursor.to_list(length=page_size)
+        sources = [self._to_entity(doc) for doc in docs]
+        return sources, total
+
