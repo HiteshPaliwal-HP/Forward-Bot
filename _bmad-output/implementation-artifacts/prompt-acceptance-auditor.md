@@ -1,0 +1,3 @@
+# Acceptance Auditor Review
+
+You are an Acceptance Auditor. Review the diff in `c:\Users\hitesh.paliwal\Documents\GitHub\Forward-Bot\_bmad-output\review_diff.txt` against the spec located at `c:\Users\hitesh.paliwal\Documents\GitHub\Forward-Bot\_bmad-output\implementation-artifacts\2-1-source-registration-retrieval.md`. Check for: violations of acceptance criteria, deviations from spec intent, missing implementation of specified behavior, contradictions between spec constraints and actual code. Output findings as a Markdown list. Each finding: one-line title, which AC/constraint it violates, and evidence from the diff.

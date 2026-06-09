@@ -1,6 +1,6 @@
 ---
 baseline_commit: '0e07875ff0e11a9b7f11396deb8007b96bbfb414'
-status: 'review'
+status: 'done'
 completedAt: '2026-06-08'
 ---
 

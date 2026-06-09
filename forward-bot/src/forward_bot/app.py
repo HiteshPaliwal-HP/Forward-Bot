@@ -34,6 +34,16 @@ async def default_lifespan(app: FastAPI):
         if mongo_client.db is not None:
             await asyncio.wait_for(mongo_client.db.command("ping"), timeout=30.0)
             logger.info("mongodb_connected", message="Connected to MongoDB successfully")
+            
+            # Create background indexes for sources and source_folders collections
+            try:
+                from forward_bot.api.schemas.base import SOURCES, SOURCE_FOLDERS
+                await mongo_client.db[SOURCES].create_index("telegram_id", unique=True, background=True)
+                await mongo_client.db[SOURCES].create_index("telegram_username", unique=True, background=True, sparse=True)
+                await mongo_client.db[SOURCE_FOLDERS].create_index("name", unique=True, background=True)
+                logger.info("mongodb_indexes_created", message="MongoDB indexes verified/created successfully")
+            except Exception as e:
+                logger.error("mongodb_index_creation_failed", error=str(e), message="Failed to create MongoDB indexes")
         else:
             raise ValueError("MongoDB database reference is None")
     except Exception as e:
@@ -101,6 +111,91 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
 
     # Include API Routers
     app.include_router(health_router)
+    from forward_bot.api.routers.sources import router as sources_router
+    app.include_router(sources_router)
+
+    # Register Exception Handlers for standard error response envelopes
+    from fastapi.responses import JSONResponse
+    from fastapi import Request, HTTPException
+    from forward_bot.domain.exceptions import (
+        DomainException,
+        TelegramUnavailableException,
+        SourceAlreadyExistsException,
+        TelegramResolveFailedException,
+        SourceNotFoundException,
+        SourceInUseException,
+    )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        if isinstance(exc.detail, dict) and "error" in exc.detail:
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"code": "http_error", "message": str(exc.detail)}}
+        )
+
+    @app.exception_handler(DomainException)
+    async def domain_exception_handler(request: Request, exc: DomainException):
+        if isinstance(exc, TelegramUnavailableException):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "code": "telegram_unavailable",
+                        "message": "Telegram client is not connected. Cannot resolve source reference."
+                    }
+                }
+            )
+        elif isinstance(exc, SourceAlreadyExistsException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "source_already_exists",
+                        "message": f"Source with Telegram ID {exc.telegram_id} already exists."
+                    }
+                }
+            )
+        elif isinstance(exc, TelegramResolveFailedException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "telegram_resolve_failed",
+                        "message": f"Failed to resolve Telegram reference: {exc.details}"
+                    }
+                }
+            )
+        elif isinstance(exc, SourceNotFoundException):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "source_not_found",
+                        "message": f"Source {exc.source_id} not found."
+                    }
+                }
+            )
+        elif isinstance(exc, SourceInUseException):
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": {
+                        "code": "source_in_use",
+                        "message": f"Source {exc.source_id} is referenced by {exc.rule_count} rules."
+                    }
+                }
+            )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "bad_request",
+                    "message": str(exc)
+                }
+            }
+        )
 
     # Serve UI static files
     if settings.ui_enabled:
