@@ -41,6 +41,19 @@ async def default_lifespan(app: FastAPI):
                 await mongo_client.db[SOURCES].create_index("telegram_id", unique=True, background=True)
                 await mongo_client.db[SOURCES].create_index("telegram_username", unique=True, background=True, sparse=True)
                 await mongo_client.db[SOURCE_FOLDERS].create_index("name", unique=True, background=True)
+                # Forwarding rule indexes (Story 3.1)
+                from forward_bot.api.schemas.base import FORWARDING_RULES
+                await mongo_client.db[FORWARDING_RULES].create_index(
+                    [("source_id", 1), ("is_active", 1)], background=True
+                )
+                await mongo_client.db[FORWARDING_RULES].create_index(
+                    [("is_active", 1)], background=True
+                )
+                # Replacement rule index (Story 3.2)
+                from forward_bot.api.schemas.base import REPLACEMENT_RULES
+                await mongo_client.db[REPLACEMENT_RULES].create_index(
+                    [("forwarding_rule_id", 1), ("is_active", 1), ("created_at", 1)], background=True
+                )
                 logger.info("mongodb_indexes_created", message="MongoDB indexes verified/created successfully")
             except Exception as e:
                 logger.error("mongodb_index_creation_failed", error=str(e), message="Failed to create MongoDB indexes")
@@ -113,6 +126,10 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
     app.include_router(health_router)
     from forward_bot.api.routers.sources import router as sources_router
     app.include_router(sources_router)
+    from forward_bot.api.routers.folders import router as folders_router
+    app.include_router(folders_router)
+    from forward_bot.api.routers.rules import router as rules_router
+    app.include_router(rules_router)
 
     # Register Exception Handlers for standard error response envelopes
     from fastapi.responses import JSONResponse
@@ -126,6 +143,15 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
         SourceInUseException,
         FolderNotFoundException,
         SourceUsernameAlreadyExistsException,
+        FolderNameInUseException,
+        FolderReferenceNotFoundException,
+        RuleNotFoundException,
+        RuleSourceNotFoundException,
+        RuleInvalidRegexException,
+        RuleSelfReferentialException,
+        RuleInvalidTimezoneException,
+        RuleMediaReplacementPathRequiredException,
+        ReplacementRuleNotFoundException,
     )
 
     @app.exception_handler(HTTPException)
@@ -201,11 +227,101 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
             )
         elif isinstance(exc, FolderNotFoundException):
             return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "folder_not_found",
+                        "message": f"Folder with ID {exc.folder_id} does not exist."
+                    }
+                }
+            )
+        elif isinstance(exc, FolderReferenceNotFoundException):
+            return JSONResponse(
                 status_code=422,
                 content={
                     "error": {
                         "code": "folder_not_found",
                         "message": f"Folder with ID {exc.folder_id} does not exist."
+                    }
+                }
+            )
+        elif isinstance(exc, FolderNameInUseException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "folder_name_in_use",
+                        "message": f"Folder name in use: {exc.name}."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleNotFoundException):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "rule_not_found",
+                        "message": f"Rule {exc.rule_id} not found."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleSourceNotFoundException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "source_not_found",
+                        "message": f"Source {exc.source_id} not found."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleInvalidRegexException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "invalid_regex",
+                        "message": f"Invalid regex /{exc.pattern}/: {exc.reason}."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleSelfReferentialException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "self_referential_rule",
+                        "message": "Cannot create rule: source equals destination."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleInvalidTimezoneException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "invalid_timezone",
+                        "message": f"Invalid timezone: {exc.timezone}."
+                    }
+                }
+            )
+        elif isinstance(exc, RuleMediaReplacementPathRequiredException):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "code": "media_replacement_path_required",
+                        "message": "media_replacement.replacement_image_path is required when enabled=true."
+                    }
+                }
+            )
+        elif isinstance(exc, ReplacementRuleNotFoundException):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": {
+                        "code": "replacement_rule_not_found",
+                        "message": f"Replacement rule {exc.replacement_id} not found."
                     }
                 }
             )

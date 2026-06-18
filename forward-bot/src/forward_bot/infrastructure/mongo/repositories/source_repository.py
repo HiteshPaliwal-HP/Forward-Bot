@@ -91,6 +91,13 @@ class SourceRepository(BaseRepository):
         doc = self._to_document(source)
         return await self.update(source.id, doc)
 
+    async def get_sources_by_folder_id(self, folder_id: str) -> list[Source]:
+        """Fetch all Sources assigned to a specific folder."""
+        if not ObjectId.is_valid(folder_id):
+            return []
+        docs = await self.find({"folder_id": ObjectId(folder_id)})
+        return [self._to_entity(doc) for doc in docs]
+
     async def list_sources(
         self,
         filter_type: str | None = None,

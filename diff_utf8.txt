@@ -1,0 +1,1412 @@
+﻿diff --git a/_bmad-output/implementation-artifacts/2-3-folder-crud.md b/_bmad-output/implementation-artifacts/2-3-folder-crud.md
+new file mode 100644
+index 0000000..b8d48bc
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/2-3-folder-crud.md
+@@ -0,0 +1,218 @@
++---
++status: 'review'
++baseline_commit: '57848c6e377c8a087419ba5f23ff93b6c46e006b'
++---
++
++# Story 2.3: Folder CRUD
++
++Status: review
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As a **Channel Operator**,
++I want **to create, rename, and delete Folders to organize my Sources into logical groups**,
++so that **I can manage 40+ sources without visual clutter and filter forwarding rules by folder**.
++
++## Acceptance Criteria
++
++1. **Create Folder (`POST /api/v1/folders`):**
++   - **Given** a unique folder name is provided in the payload.
++   - **When** `POST /api/v1/folders` is called with `{"name": "Crypto Signals"}`.
++   - **Then** HTTP 201 Created is returned with the created Folder containing `id` (24-character hex ObjectId string), `name`, `created_at`, and `updated_at` (ISO 8601 UTC strings with `Z` suffix).
++   - **And** a structured log event `folder_created` is emitted containing the folder's `id` and `name`.
++
++2. **Reject Duplicate Folder Name (Case-Insensitive):**
++   - **Given** a folder name that already exists in the database `source_folders` collection (checked case-insensitively).
++   - **When** `POST /api/v1/folders` is called with that duplicate name (e.g., `"crypto signals"` when `"Crypto Signals"` exists).
++   - **Then** HTTP 422 Unprocessable Entity is returned with standard error envelope:
++     ```json
++     {
++       "error": {
++         "code": "folder_name_in_use",
++         "message": "Folder name in use: crypto signals."
++       }
++     }
++     ```
++
++3. **List Folders with Source Count (Single-Trip Aggregation):**
++   - **Given** registered folders exist in the database.
++   - **When** `GET /api/v1/folders` is called.
++   - **Then** HTTP 200 OK is returned with a JSON array of all folders.
++   - **And** each folder object in the list includes a `source_count` integer showing how many Sources are currently assigned to it (`folder_id` matching this folder's ID).
++   - **And** the folders are sorted alphabetically by `name` ascending.
++   - **And** this count is fetched efficiently in a single aggregate database query to prevent N+1 query patterns.
++
++4. **Verify Folder Name Availability (Debounce support):**
++   - **Given** the operator wants to verify if a folder name is already in use (checked case-insensitively).
++   - **When** `GET /api/v1/folders?name={name}` is called.
++   - **Then** HTTP 200 OK is returned with a JSON list of matching folders (if name taken, returns the matching folder; if not, returns `[]`).
++   - **And** this supports debounced check GET requests from the UI.
++
++5. **Get Folder Details (With embedded sources or Not Found 404):**
++   - **Given** a folder exists with ID `{folder_id}`.
++   - **When** `GET /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 200 OK is returned with the folder details.
++   - **When** `GET /api/v1/folders/{folder_id}?include=sources` is called.
++   - **Then** the response includes the folder fields plus an embedded `sources` array containing all Source objects assigned to it.
++   - **Given** `{folder_id}` does not exist or has an invalid ID format.
++   - **When** `GET /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 404 Not Found is returned with standard error envelope:
++     ```json
++     {
++       "error": {
++         "code": "folder_not_found",
++         "message": "Folder with ID {folder_id} does not exist."
++       }
++     }
++     ```
++
++6. **Rename Folder (Self-Rename and Conflict checks):**
++   - **Given** a folder exists with ID `{folder_id}`.
++   - **When** `PUT /api/v1/folders/{folder_id}` is called with a payload `{"name": "New Folder Name"}`.
++   - **Then** HTTP 200 OK is returned with the updated Folder object, and `updated_at` is set to the current UTC timestamp.
++   - **And** a structured log event `folder_renamed` is emitted.
++   - **Given** the name is already in use by *another* folder (checked case-insensitively).
++   - **When** `PUT /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 422 Unprocessable Entity is returned with `folder_name_in_use`.
++   - **Given** the name matches the folder's *own* current name.
++   - **When** `PUT /api/v1/folders/{folder_id}` is called.
++   - **Then** the operation succeeds successfully (self-rename allowed).
++   - **Given** `{folder_id}` does not exist.
++   - **When** `PUT /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 404 Not Found is returned with `folder_not_found`.
++
++7. **Delete Folder & Disassociate Sources:**
++   - **Given** a folder exists with ID `{folder_id}`.
++   - **When** `DELETE /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 204 No Content is returned.
++   - **And** the folder document is permanently deleted from MongoDB `source_folders` collection.
++   - **And** all Sources assigned to this folder have their `folder_id` updated to `null` in the `sources` collection.
++   - **And** the Sources themselves are NOT deleted.
++   - **And** a structured log event `folder_deleted` is emitted.
++   - **Given** `{folder_id}` does not exist.
++   - **When** `DELETE /api/v1/folders/{folder_id}` is called.
++   - **Then** HTTP 404 Not Found is returned with `folder_not_found`.
++
++8. **Auth Gate / Security:**
++   - **Given** any request is made to the folders endpoints (`POST`, `GET`, `PUT`, `DELETE`).
++   - **Then** it must go through the dual-auth security gate (`Depends(get_current_operator)`).
++
++## Tasks / Subtasks
++
++- [x] **Domain Entity & Exceptions**
++  - [x] Create `SourceFolder` domain entity in [source_folder.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/domain/entities/source_folder.py) (AC: 1)
++  - [x] Add `FolderNameInUseException` in [exceptions.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/domain/exceptions.py) (AC: 2, 6)
++  - [x] Add `FolderReferenceNotFoundException` (when referenced folder is missing, mapped to HTTP 422) in [exceptions.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/domain/exceptions.py) (AC: 5)
++  - [x] Update `domain_exception_handler` in [app.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/app.py):
++    - [x] Map `FolderNameInUseException` to HTTP 422 with `"code": "folder_name_in_use"` (AC: 2, 6)
++    - [x] Map `FolderNotFoundException` to HTTP 404 with `"code": "folder_not_found"` (AC: 5, 6, 7)
++    - [x] Map `FolderReferenceNotFoundException` to HTTP 422 with `"code": "folder_not_found"` (AC: 5)
++- [x] **Infrastructure / Repository**
++  - [x] Create `FolderRepository` inside [folder_repository.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/infrastructure/mongo/repositories/folder_repository.py) inheriting from `BaseRepository` (AC: 1)
++  - [x] Implement `get_folder_by_id(id)` returning folder domain entity (AC: 5)
++  - [x] Implement `get_folder_by_name(name)` supporting case-insensitive checks (AC: 2, 4, 6)
++  - [x] Implement `add_folder(folder)` saving a new folder mapped to document (AC: 1)
++  - [x] Implement `update_folder(folder)` replacing the folder document (AC: 6)
++  - [x] Implement `delete_folder(id)` deleting the folder and updating all referencing sources' `folder_id` to `None` in the `sources` collection (AC: 7)
++  - [x] Implement `list_folders_with_source_count(name_filter)` using a MongoDB aggregation pipeline (`$lookup` and `$size`) to fetch folders with pre-calculated `source_count`, sorted by name ascending (AC: 3, 4)
++- [x] **Use Cases**
++  - [x] Implement `CreateFolder` use case in `application/folders/create_folder.py` checking case-insensitive name uniqueness and logging `folder_created` (AC: 1, 2)
++  - [x] Implement `ListFolders` use case in `application/folders/list_folders.py` aggregating folder list with `source_count` (AC: 3, 4)
++  - [x] Implement `GetFolder` use case in `application/folders/get_folder.py` supporting optional sources list loading (AC: 5)
++  - [x] Implement `RenameFolder` (or `UpdateFolder`) use case in `application/folders/rename_folder.py` checking name uniqueness (excluding the current folder ID) and logging `folder_renamed` (AC: 6)
++  - [x] Implement `DeleteFolder` use case in `application/folders/delete_folder.py` executing folder removal, source disassociation, and logging `folder_deleted` (AC: 7)
++- [x] **API Schemas & Routers**
++  - [x] Create schemas in [folder.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/schemas/folder.py):
++    - [x] `FolderCreateRequest` (required `name`)
++    - [x] `FolderUpdateRequest` (required `name`)
++    - [x] `FolderResponse` (inheriting `MongoBaseModel`, with fields `name`, `created_at`, `updated_at`, `source_count`)
++    - [x] `FolderDetailsResponse` (inheriting `FolderResponse`, with optional `sources` list)
++  - [x] Implement `POST /api/v1/folders` in [folders.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/routers/folders.py) (AC: 1, 2, 8)
++  - [x] Implement `GET /api/v1/folders` in [folders.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/routers/folders.py) (AC: 3, 4, 8)
++  - [x] Implement `GET /api/v1/folders/{id}` in [folders.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/routers/folders.py) (AC: 5, 8)
++  - [x] Implement `PUT /api/v1/folders/{id}` in [folders.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/routers/folders.py) (AC: 6, 8)
++  - [x] Implement `DELETE /api/v1/folders/{id}` in [folders.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/api/routers/folders.py) (AC: 7, 8)
++  - [x] Register the new router in [app.py](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/src/forward_bot/app.py) (AC: 1-8)
++- [x] **Verification & Testing**
++  - [x] Write unit tests for `FolderRepository` under `tests/infrastructure/mongo/test_folder_repository.py` (AC: 1-7)
++  - [x] Write integration router tests under `tests/api/test_folders.py` verifying all success, duplication, disassociation, self-rename, 404, 422 and security scenarios (AC: 1-8)
++
++## Dev Notes
++
++### Architecture & Implementation Guardrails
++
++- **Clean Architecture & Separation of Concerns:**
++  - `SourceFolder` domain entity must be a pure Python dataclass in `domain/entities/source_folder.py`, importing nothing from MongoDB or FastAPI frameworks.
++  - Keep use cases focused on domain logic. Inject the `FolderRepository` (and `SourceRepository` if needed) into use cases via FastAPI dependencies.
++  - The API router is the translation boundary. Map custom exceptions (`FolderNameInUseException`, `FolderNotFoundException`, `FolderReferenceNotFoundException`) to standard HTTP responses in the FastAPI app error handler (`app.py`).
++- **Data Consistency Rules & Serializations:**
++  - Use collection constant `SOURCE_FOLDERS` from `api/schemas/base.py`.
++  - Save folders with timestamps as UTC ISO 8601 strings (e.g., `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")`).
++  - Use `MongoBaseModel` as the Pydantic schema base to serialize `_id` into a 24-character string `id`.
++- **Database Index Dependency:**
++  - Verify that the unique index on `name` exists for `SOURCE_FOLDERS` as declared in `app.py` lifespan (`await mongo_client.db[SOURCE_FOLDERS].create_index("name", unique=True, background=True)`).
++- **Disassociation Handling on Delete:**
++  - When a folder is deleted, all sources referencing it must be disassociated. In the delete use case or repository method, execute:
++    ```python
++    await self.db[SOURCES].update_many(
++        {"folder_id": ObjectId(folder_id)},
++        {"$set": {"folder_id": None}}
++    )
++    ```
++    This ensures that when a folder is removed, its sources have `folder_id` set to `null` instead of dangling.
++- **Double Name Check:**
++  - When renaming a folder via PUT, ensure that if the name matches another existing folder, the `FolderNameInUseException` is raised. Allow renaming a folder to its *own* current name without triggering a name-in-use error. Exclude the current ID: `{"name": name, "_id": {"$ne": ObjectId(folder_id)}}`.
++- **Case-Insensitive Uniqueness Enforced:**
++  - To prevent duplicates like `"crypto"` and `"Crypto"`, the name existence checks must query MongoDB case-insensitively using collation or regular expressions, i.e. `{"name": {"$regex": f"^{name}$", "$options": "i"}}` or case-insensitive query matching.
++- **Efficient N+1 Queries Prevention:**
++  - When listing folders, use a MongoDB aggregate pipeline on `source_folders` collection with `$lookup` to join `sources` collection matching `folder_id` with `_id`, projecting `$size` of matches as `source_count`.
++- **API Security:**
++  - All router endpoints in `folders.py` must declare a dependency on `get_current_operator` to protect folders CRUD.
++
++### References
++
++- Cite: plural resource paths mapping standard [architecture.md:L560-571](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L560-L571)
++- Cite: error response envelope format [architecture.md:L348-354](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L348-L354)
++- Cite: Clean Architecture backend structure [architecture.md:L621-648](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L621-L648)
++- Cite: Folder rename duplicate-name decision [architecture.md:L105](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L105)
++
++## Dev Agent Record
++
++### Agent Model Used
++
++Gemini 3.5 Flash (Medium)
++
++### Debug Log References
++
++- Fixed aggregate pipeline unit test mock: collection.aggregate returns cursor synchronously in Motor, so we replaced AsyncMock return value with MagicMock.
++
++### Completion Notes List
++
++- Implemented SourceFolder domain entity.
++- Implemented FolderRepository with aggregate queries for source counts.
++- Implemented CreateFolder, ListFolders, GetFolder, RenameFolder, and DeleteFolder use cases.
++- Implemented API schemas for folders.
++- Implemented folders.py API router with standard security and exception handling.
++- Registered folder.py schemas, providers, and registered folders router in app.py.
++- Wrote extensive Unit and Integration API test suites. All 105 tests pass successfully.
++
++### File List
++
++- forward-bot/src/forward_bot/domain/entities/source_folder.py
++- forward-bot/src/forward_bot/domain/exceptions.py
++- forward-bot/src/forward_bot/infrastructure/mongo/repositories/source_repository.py
++- forward-bot/src/forward_bot/infrastructure/mongo/repositories/folder_repository.py
++- forward-bot/src/forward_bot/application/folders/create_folder.py
++- forward-bot/src/forward_bot/application/folders/get_folder.py
++- forward-bot/src/forward_bot/application/folders/list_folders.py
++- forward-bot/src/forward_bot/application/folders/rename_folder.py
++- forward-bot/src/forward_bot/application/folders/delete_folder.py
++- forward-bot/src/forward_bot/api/schemas/folder.py
++- forward-bot/src/forward_bot/api/dependencies/providers.py
++- forward-bot/src/forward_bot/api/routers/folders.py
++- forward-bot/src/forward_bot/app.py
++- forward-bot/src/forward_bot/application/sources/update_source.py
++- forward-bot/tests/infrastructure/mongo/test_folder_repository.py
++- forward-bot/tests/api/test_folders.py
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 691a355..c244f94 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -33,7 +33,7 @@
+ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+ 
+ generated: "2026-06-02"
+-last_updated: "2026-06-09"
++last_updated: "2026-06-10"
+ work_started: "2026-06-02"
+ work_completed: "2026-06-09"
+ first_story_created: "2026-06-02"
+@@ -61,7 +61,7 @@ development_status:
+ 
+   2-1-source-registration-retrieval: done
+   2-2-source-listing-updates: done
+-  2-3-folder-crud: backlog
++  2-3-folder-crud: review
+ 
+   epic-2-retrospective: optional
+ 
+@@ -117,8 +117,8 @@ summary:
+   epics_in_progress: 1
+   epics_done: 1
+ 
+-  stories_backlog: 19
+-  stories_ready_for_dev: 0
++  stories_backlog: 18
++  stories_ready_for_dev: 1
+   stories_in_progress: 0
+   stories_in_review: 0
+   stories_done: 6
+diff --git a/forward-bot/src/forward_bot/api/dependencies/providers.py b/forward-bot/src/forward_bot/api/dependencies/providers.py
+index 15ec50d..72583f5 100644
+--- a/forward-bot/src/forward_bot/api/dependencies/providers.py
++++ b/forward-bot/src/forward_bot/api/dependencies/providers.py
+@@ -5,6 +5,7 @@ from fastapi import Depends
+ from forward_bot.infrastructure.mongo import mongo_client
+ from forward_bot.infrastructure.telegram import telegram_client, TelegramClientHolder
+ from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
+ 
+ 
+ def get_db() -> AsyncIOMotorDatabase:
+@@ -19,6 +20,11 @@ def get_source_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> SourceR
+     return SourceRepository(db)
+ 
+ 
++def get_folder_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> FolderRepository:
++    """Injects the FolderRepository."""
++    return FolderRepository(db)
++
++
+ def get_telegram_client() -> TelegramClientHolder:
+     """Injects the TelegramClientHolder connection client."""
+     return telegram_client
+diff --git a/forward-bot/src/forward_bot/api/routers/folders.py b/forward-bot/src/forward_bot/api/routers/folders.py
+new file mode 100644
+index 0000000..819266d
+--- /dev/null
++++ b/forward-bot/src/forward_bot/api/routers/folders.py
+@@ -0,0 +1,137 @@
++"""FastAPI router for folder management."""
++from fastapi import APIRouter, Depends, status, Query
++from bson import ObjectId
++
++from forward_bot.api.dependencies.auth import get_current_operator
++from forward_bot.api.dependencies.providers import get_folder_repository, get_source_repository
++from forward_bot.api.schemas.folder import (
++    FolderCreateRequest,
++    FolderUpdateRequest,
++    FolderResponse,
++    FolderDetailsResponse,
++)
++from forward_bot.application.folders.create_folder import CreateFolder
++from forward_bot.application.folders.list_folders import ListFolders
++from forward_bot.application.folders.get_folder import GetFolder
++from forward_bot.application.folders.rename_folder import RenameFolder
++from forward_bot.application.folders.delete_folder import DeleteFolder
++from forward_bot.domain.exceptions import FolderNotFoundException
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
++
++router = APIRouter(prefix="/api/v1/folders", tags=["folders"])
++
++
++@router.post(
++    "",
++    response_model=FolderResponse,
++    status_code=status.HTTP_201_CREATED,
++    summary="Create a new folder."
++)
++async def create_folder(
++    payload: FolderCreateRequest,
++    folder_repo: FolderRepository = Depends(get_folder_repository),
++    _: str = Depends(get_current_operator),
++) -> FolderResponse:
++    """Creates a new folder with a unique name."""
++    use_case = CreateFolder(folder_repo)
++    folder = await use_case.execute(name=payload.name)
++    return FolderResponse.from_entity(folder)
++
++
++@router.get(
++    "",
++    response_model=list[FolderResponse],
++    status_code=status.HTTP_200_OK,
++    summary="List folders."
++)
++async def list_folders(
++    name: str | None = Query(None),
++    folder_repo: FolderRepository = Depends(get_folder_repository),
++    _: str = Depends(get_current_operator),
++) -> list[FolderResponse]:
++    """Retrieve list of folders, optionally filtered by name (case-insensitive duplicate check)."""
++    use_case = ListFolders(folder_repo)
++    results = await use_case.execute(name_filter=name)
++    return [
++        FolderResponse(
++            id=r["id"],
++            name=r["name"],
++            created_at=r["created_at"],
++            updated_at=r["updated_at"],
++            source_count=r["source_count"]
++        )
++        for r in results
++    ]
++
++
++@router.get(
++    "/{folder_id}",
++    response_model=FolderDetailsResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Get folder details."
++)
++async def get_folder(
++    folder_id: str,
++    include: str | None = Query(None),
++    folder_repo: FolderRepository = Depends(get_folder_repository),
++    source_repo: SourceRepository = Depends(get_source_repository),
++    _: str = Depends(get_current_operator),
++) -> FolderDetailsResponse:
++    """Get details of a folder. If ?include=sources is set, embeds referencing sources."""
++    if not ObjectId.is_valid(folder_id):
++        raise FolderNotFoundException(folder_id)
++
++    include_sources = (include == "sources")
++    use_case = GetFolder(folder_repo, source_repo)
++    folder, sources = await use_case.execute(folder_id, include_sources=include_sources)
++
++    if sources is not None:
++        source_count = len(sources)
++    else:
++        source_count = await source_repo.collection.count_documents({"folder_id": ObjectId(folder_id)})
++
++    return FolderDetailsResponse.from_entity_with_sources(
++        folder=folder,
++        sources=sources,
++        source_count=source_count
++    )
++
++
++@router.put(
++    "/{folder_id}",
++    response_model=FolderResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Rename a folder."
++)
++async def rename_folder(
++    folder_id: str,
++    payload: FolderUpdateRequest,
++    folder_repo: FolderRepository = Depends(get_folder_repository),
++    _: str = Depends(get_current_operator),
++) -> FolderResponse:
++    """Rename folder by ID, checking name uniqueness (self-rename allowed)."""
++    if not ObjectId.is_valid(folder_id):
++        raise FolderNotFoundException(folder_id)
++
++    use_case = RenameFolder(folder_repo)
++    folder = await use_case.execute(folder_id=folder_id, new_name=payload.name)
++    return FolderResponse.from_entity(folder)
++
++
++@router.delete(
++    "/{folder_id}",
++    status_code=status.HTTP_204_NO_CONTENT,
++    summary="Delete a folder."
++)
++async def delete_folder(
++    folder_id: str,
++    folder_repo: FolderRepository = Depends(get_folder_repository),
++    _: str = Depends(get_current_operator),
++) -> None:
++    """Delete folder by ID, disassociating all its sources."""
++    if not ObjectId.is_valid(folder_id):
++        raise FolderNotFoundException(folder_id)
++
++    use_case = DeleteFolder(folder_repo)
++    await use_case.execute(folder_id)
+diff --git a/forward-bot/src/forward_bot/api/schemas/folder.py b/forward-bot/src/forward_bot/api/schemas/folder.py
+new file mode 100644
+index 0000000..59b7019
+--- /dev/null
++++ b/forward-bot/src/forward_bot/api/schemas/folder.py
+@@ -0,0 +1,64 @@
++"""Pydantic schemas for the Folder endpoints."""
++from datetime import datetime
++from pydantic import BaseModel, Field
++
++from forward_bot.api.schemas.base import MongoBaseModel
++from forward_bot.api.schemas.source import SourceResponse
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.domain.entities.source import Source
++
++
++class FolderCreateRequest(BaseModel):
++    """Payload for creating a new Folder."""
++    name: str = Field(..., min_length=1, max_length=100, description="Name of the folder")
++
++
++class FolderUpdateRequest(BaseModel):
++    """Payload for updating a Folder (rename)."""
++    name: str = Field(..., min_length=1, max_length=100, description="New name for the folder")
++
++
++class FolderResponse(MongoBaseModel):
++    """Response payload representing a Folder."""
++    id: str = Field(validation_alias="_id", serialization_alias="id")
++    name: str
++    created_at: datetime
++    updated_at: datetime
++    source_count: int = 0
++
++    @classmethod
++    def from_entity(cls, folder: SourceFolder, source_count: int = 0) -> "FolderResponse":
++        """Convert a SourceFolder domain entity to a FolderResponse schema."""
++        return cls(
++            id=folder.id,
++            name=folder.name,
++            created_at=folder.created_at,
++            updated_at=folder.updated_at,
++            source_count=source_count
++        )
++
++
++class FolderDetailsResponse(FolderResponse):
++    """Response payload representing detailed Folder information with sources."""
++    sources: list[SourceResponse] | None = None
++
++    @classmethod
++    def from_entity_with_sources(
++        cls,
++        folder: SourceFolder,
++        sources: list[Source] | None = None,
++        source_count: int = 0
++    ) -> "FolderDetailsResponse":
++        """Convert folder and optional sources to FolderDetailsResponse."""
++        sources_schemas = None
++        if sources is not None:
++            sources_schemas = [SourceResponse.from_entity(s) for s in sources]
++
++        return cls(
++            id=folder.id,
++            name=folder.name,
++            created_at=folder.created_at,
++            updated_at=folder.updated_at,
++            source_count=source_count,
++            sources=sources_schemas
++        )
+diff --git a/forward-bot/src/forward_bot/app.py b/forward-bot/src/forward_bot/app.py
+index 733e52c..8de475d 100644
+--- a/forward-bot/src/forward_bot/app.py
++++ b/forward-bot/src/forward_bot/app.py
+@@ -113,6 +113,8 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
+     app.include_router(health_router)
+     from forward_bot.api.routers.sources import router as sources_router
+     app.include_router(sources_router)
++    from forward_bot.api.routers.folders import router as folders_router
++    app.include_router(folders_router)
+ 
+     # Register Exception Handlers for standard error response envelopes
+     from fastapi.responses import JSONResponse
+@@ -126,6 +128,8 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
+         SourceInUseException,
+         FolderNotFoundException,
+         SourceUsernameAlreadyExistsException,
++        FolderNameInUseException,
++        FolderReferenceNotFoundException,
+     )
+ 
+     @app.exception_handler(HTTPException)
+@@ -200,6 +204,16 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
+                 }
+             )
+         elif isinstance(exc, FolderNotFoundException):
++            return JSONResponse(
++                status_code=404,
++                content={
++                    "error": {
++                        "code": "folder_not_found",
++                        "message": f"Folder with ID {exc.folder_id} does not exist."
++                    }
++                }
++            )
++        elif isinstance(exc, FolderReferenceNotFoundException):
+             return JSONResponse(
+                 status_code=422,
+                 content={
+@@ -209,6 +223,16 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
+                     }
+                 }
+             )
++        elif isinstance(exc, FolderNameInUseException):
++            return JSONResponse(
++                status_code=422,
++                content={
++                    "error": {
++                        "code": "folder_name_in_use",
++                        "message": f"Folder name in use: {exc.name}."
++                    }
++                }
++            )
+         return JSONResponse(
+             status_code=400,
+             content={
+diff --git a/forward-bot/src/forward_bot/application/folders/create_folder.py b/forward-bot/src/forward_bot/application/folders/create_folder.py
+new file mode 100644
+index 0000000..4f3880b
+--- /dev/null
++++ b/forward-bot/src/forward_bot/application/folders/create_folder.py
+@@ -0,0 +1,39 @@
++"""Use case for creating a new SourceFolder."""
++from datetime import datetime, timezone
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.domain.exceptions import FolderNameInUseException
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++from forward_bot.infrastructure.logging import logger
++
++
++class CreateFolder:
++    """Orchestrates folder creation and enforces name uniqueness."""
++
++    def __init__(self, folder_repo: FolderRepository) -> None:
++        self.folder_repo = folder_repo
++
++    async def execute(self, name: str) -> SourceFolder:
++        """Create a folder after checking for duplicate name (case-insensitive)."""
++        # 1. Enforce uniqueness
++        existing = await self.folder_repo.get_folder_by_name(name)
++        if existing:
++            raise FolderNameInUseException(name)
++
++        # 2. Save
++        now = datetime.now(timezone.utc)
++        folder = SourceFolder(
++            id=None,
++            name=name,
++            created_at=now,
++            updated_at=now
++        )
++        inserted_id = await self.folder_repo.add_folder(folder)
++
++        # 3. Log
++        logger.info(
++            "folder_created",
++            folder_id=inserted_id,
++            name=name,
++            message=f"Folder '{name}' created successfully"
++        )
++        return folder
+diff --git a/forward-bot/src/forward_bot/application/folders/delete_folder.py b/forward-bot/src/forward_bot/application/folders/delete_folder.py
+new file mode 100644
+index 0000000..9103df3
+--- /dev/null
++++ b/forward-bot/src/forward_bot/application/folders/delete_folder.py
+@@ -0,0 +1,29 @@
++"""Use case for deleting a SourceFolder."""
++from forward_bot.domain.exceptions import FolderNotFoundException
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++from forward_bot.infrastructure.logging import logger
++
++
++class DeleteFolder:
++    """Orchestrates folder deletion, disassociates sources, and logs the event."""
++
++    def __init__(self, folder_repo: FolderRepository) -> None:
++        self.folder_repo = folder_repo
++
++    async def execute(self, folder_id: str) -> None:
++        """Verify existence, delete folder, disassociate sources, and emit log event."""
++        # 1. Verify existence
++        folder = await self.folder_repo.get_folder_by_id(folder_id)
++        if not folder:
++            raise FolderNotFoundException(folder_id)
++
++        # 2. Delete and disassociate
++        await self.folder_repo.delete_folder(folder_id)
++
++        # 3. Log
++        logger.info(
++            "folder_deleted",
++            folder_id=folder_id,
++            name=folder.name,
++            message=f"Folder '{folder.name}' with ID '{folder_id}' deleted successfully"
++        )
+diff --git a/forward-bot/src/forward_bot/application/folders/get_folder.py b/forward-bot/src/forward_bot/application/folders/get_folder.py
+new file mode 100644
+index 0000000..980ce12
+--- /dev/null
++++ b/forward-bot/src/forward_bot/application/folders/get_folder.py
+@@ -0,0 +1,26 @@
++"""Use case for retrieving folder details."""
++from forward_bot.domain.entities.source import Source
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.domain.exceptions import FolderNotFoundException
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
++
++
++class GetFolder:
++    """Orchestrates folder retrieval and optionally loads embedded sources."""
++
++    def __init__(self, folder_repo: FolderRepository, source_repo: SourceRepository) -> None:
++        self.folder_repo = folder_repo
++        self.source_repo = source_repo
++
++    async def execute(self, folder_id: str, include_sources: bool = False) -> tuple[SourceFolder, list[Source] | None]:
++        """Fetch folder by ID, raise FolderNotFoundException if missing, optionally load sources."""
++        folder = await self.folder_repo.get_folder_by_id(folder_id)
++        if not folder:
++            raise FolderNotFoundException(folder_id)
++
++        sources = None
++        if include_sources:
++            sources = await self.source_repo.get_sources_by_folder_id(folder_id)
++
++        return folder, sources
+diff --git a/forward-bot/src/forward_bot/application/folders/list_folders.py b/forward-bot/src/forward_bot/application/folders/list_folders.py
+new file mode 100644
+index 0000000..69a3241
+--- /dev/null
++++ b/forward-bot/src/forward_bot/application/folders/list_folders.py
+@@ -0,0 +1,14 @@
++"""Use case for listing SourceFolders."""
++from typing import Any
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++
++
++class ListFolders:
++    """Orchestrates folder retrieval with aggregated source count."""
++
++    def __init__(self, folder_repo: FolderRepository) -> None:
++        self.folder_repo = folder_repo
++
++    async def execute(self, name_filter: str | None = None) -> list[dict[str, Any]]:
++        """List folders with their calculated source_count, sorted by name ascending."""
++        return await self.folder_repo.list_folders_with_source_count(name_filter)
+diff --git a/forward-bot/src/forward_bot/application/folders/rename_folder.py b/forward-bot/src/forward_bot/application/folders/rename_folder.py
+new file mode 100644
+index 0000000..9ad88ff
+--- /dev/null
++++ b/forward-bot/src/forward_bot/application/folders/rename_folder.py
+@@ -0,0 +1,43 @@
++"""Use case for renaming/updating a SourceFolder."""
++from datetime import datetime, timezone
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.domain.exceptions import FolderNotFoundException, FolderNameInUseException
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++from forward_bot.infrastructure.logging import logger
++
++
++class RenameFolder:
++    """Orchestrates folder renaming and ensures case-insensitive uniqueness checks."""
++
++    def __init__(self, folder_repo: FolderRepository) -> None:
++        self.folder_repo = folder_repo
++
++    async def execute(self, folder_id: str, new_name: str) -> SourceFolder:
++        """Rename folder, handling duplicates (excluding self) and logging the event."""
++        # 1. Fetch folder
++        folder = await self.folder_repo.get_folder_by_id(folder_id)
++        if not folder:
++            raise FolderNotFoundException(folder_id)
++
++        # 2. Check case-insensitive uniqueness excluding self
++        existing = await self.folder_repo.get_folder_by_name(new_name, exclude_id=folder_id)
++        if existing:
++            raise FolderNameInUseException(new_name)
++
++        # 3. Apply updates
++        old_name = folder.name
++        folder.name = new_name
++        folder.updated_at = datetime.now(timezone.utc)
++
++        await self.folder_repo.update_folder(folder)
++
++        # 4. Log
++        logger.info(
++            "folder_renamed",
++            folder_id=folder_id,
++            old_name=old_name,
++            new_name=new_name,
++            message=f"Folder '{folder_id}' renamed from '{old_name}' to '{new_name}'"
++        )
++
++        return folder
+diff --git a/forward-bot/src/forward_bot/application/sources/update_source.py b/forward-bot/src/forward_bot/application/sources/update_source.py
+index aaa03e3..d035ad3 100644
+--- a/forward-bot/src/forward_bot/application/sources/update_source.py
++++ b/forward-bot/src/forward_bot/application/sources/update_source.py
+@@ -4,7 +4,7 @@ from typing import Any
+ from forward_bot.domain.entities.source import Source
+ from forward_bot.domain.exceptions import (
+     SourceNotFoundException,
+-    FolderNotFoundException,
++    FolderReferenceNotFoundException,
+     SourceUsernameAlreadyExistsException,
+ )
+ from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
+@@ -33,7 +33,7 @@ class UpdateSource:
+                 # Check folder existence
+                 exists = await self.source_repo.folder_exists(folder_id)
+                 if not exists:
+-                    raise FolderNotFoundException(folder_id)
++                    raise FolderReferenceNotFoundException(folder_id)
+ 
+         # 3. Validate duplicate username if telegram_username is provided
+         if "telegram_username" in update_fields:
+diff --git a/forward-bot/src/forward_bot/domain/entities/source_folder.py b/forward-bot/src/forward_bot/domain/entities/source_folder.py
+new file mode 100644
+index 0000000..8bc8f45
+--- /dev/null
++++ b/forward-bot/src/forward_bot/domain/entities/source_folder.py
+@@ -0,0 +1,12 @@
++"""SourceFolder domain entity representation."""
++from dataclasses import dataclass
++from datetime import datetime
++
++
++@dataclass
++class SourceFolder:
++    """Represents a folder to organize sources."""
++    id: str | None
++    name: str
++    created_at: datetime
++    updated_at: datetime
+diff --git a/forward-bot/src/forward_bot/domain/exceptions.py b/forward-bot/src/forward_bot/domain/exceptions.py
+index 0fe1e86..a27af22 100644
+--- a/forward-bot/src/forward_bot/domain/exceptions.py
++++ b/forward-bot/src/forward_bot/domain/exceptions.py
+@@ -53,3 +53,18 @@ class FolderNotFoundException(DomainException):
+         self.folder_id = folder_id
+         super().__init__(f"Folder with ID {folder_id} does not exist.")
+ 
++
++class FolderNameInUseException(DomainException):
++    """Raised when creating or updating a folder with a name that is already in use."""
++    def __init__(self, name: str):
++        self.name = name
++        super().__init__(f"Folder name in use: {name}.")
++
++
++class FolderReferenceNotFoundException(DomainException):
++    """Raised when a referenced folder is missing."""
++    def __init__(self, folder_id: str):
++        self.folder_id = folder_id
++        super().__init__(f"Folder with ID {folder_id} does not exist.")
++
++
+diff --git a/forward-bot/src/forward_bot/infrastructure/mongo/repositories/folder_repository.py b/forward-bot/src/forward_bot/infrastructure/mongo/repositories/folder_repository.py
+new file mode 100644
+index 0000000..a0cf0ac
+--- /dev/null
++++ b/forward-bot/src/forward_bot/infrastructure/mongo/repositories/folder_repository.py
+@@ -0,0 +1,123 @@
++"""Repository for Folder documents in MongoDB."""
++import re
++from typing import Any
++from bson import ObjectId
++from motor.motor_asyncio import AsyncIOMotorDatabase
++
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.api.schemas.base import SOURCE_FOLDERS, SOURCES
++from forward_bot.infrastructure.mongo.repositories.base import BaseRepository
++
++
++class FolderRepository(BaseRepository):
++    """Provides methods for SourceFolder specific database persistence."""
++
++    def __init__(self, db: AsyncIOMotorDatabase) -> None:
++        super().__init__(db, SOURCE_FOLDERS)
++
++    def _to_entity(self, doc: dict[str, Any]) -> SourceFolder:
++        """Map a MongoDB dictionary document to a SourceFolder domain entity."""
++        return SourceFolder(
++            id=str(doc["_id"]),
++            name=doc["name"],
++            created_at=doc["created_at"],
++            updated_at=doc["updated_at"]
++        )
++
++    def _to_document(self, entity: SourceFolder) -> dict[str, Any]:
++        """Map a SourceFolder domain entity to a MongoDB dictionary document."""
++        doc: dict[str, Any] = {
++            "name": entity.name,
++            "created_at": entity.created_at,
++            "updated_at": entity.updated_at
++        }
++        if entity.id:
++            doc["_id"] = ObjectId(entity.id)
++        return doc
++
++    async def get_folder_by_id(self, id: str) -> SourceFolder | None:
++        """Fetch a SourceFolder by its database ID."""
++        if not ObjectId.is_valid(id):
++            return None
++        doc = await self.get_by_id(id)
++        return self._to_entity(doc) if doc else None
++
++    async def get_folder_by_name(self, name: str, exclude_id: str | None = None) -> SourceFolder | None:
++        """Fetch a SourceFolder by its name (case-insensitive), optionally excluding an ID."""
++        escaped_name = re.escape(name)
++        query: dict[str, Any] = {"name": {"$regex": f"^{escaped_name}$", "$options": "i"}}
++        if exclude_id and ObjectId.is_valid(exclude_id):
++            query["_id"] = {"$ne": ObjectId(exclude_id)}
++        doc = await self.collection.find_one(query)
++        return self._to_entity(doc) if doc else None
++
++    async def add_folder(self, folder: SourceFolder) -> str:
++        """Insert a new SourceFolder domain entity into the database and update its ID."""
++        doc = self._to_document(folder)
++        inserted_id = await self.insert(doc)
++        folder.id = inserted_id
++        return inserted_id
++
++    async def update_folder(self, folder: SourceFolder) -> bool:
++        """Update/Replace an existing SourceFolder in the database."""
++        doc = self._to_document(folder)
++        return await self.update(folder.id, doc)
++
++    async def delete_folder(self, id: str) -> bool:
++        """Permanently delete a Folder from the database and disassociate its sources."""
++        if not ObjectId.is_valid(id):
++            return False
++        deleted = await self.delete(id)
++        if deleted:
++            # Update all sources referencing this folder to have folder_id set to None
++            await self.db[SOURCES].update_many(
++                {"folder_id": ObjectId(id)},
++                {"$set": {"folder_id": None}}
++            )
++        return deleted
++
++    async def list_folders_with_source_count(self, name_filter: str | None = None) -> list[dict[str, Any]]:
++        """List folders with their source counts using a single aggregate query."""
++        pipeline: list[dict[str, Any]] = []
++
++        if name_filter:
++            escaped_name = re.escape(name_filter)
++            pipeline.append({
++                "$match": {
++                    "name": {"$regex": f"^{escaped_name}$", "$options": "i"}
++                }
++            })
++
++        pipeline.extend([
++            {
++                "$lookup": {
++                    "from": SOURCES,
++                    "localField": "_id",
++                    "foreignField": "folder_id",
++                    "as": "sources"
++                }
++            },
++            {
++                "$project": {
++                    "_id": 1,
++                    "name": 1,
++                    "created_at": 1,
++                    "updated_at": 1,
++                    "source_count": {"$size": "$sources"}
++                }
++            },
++            {
++                "$sort": {
++                    "name": 1
++                }
++            }
++        ])
++
++        cursor = self.collection.aggregate(pipeline)
++        docs = await cursor.to_list(length=None)
++
++        results = []
++        for doc in docs:
++            doc["id"] = str(doc["_id"])
++            results.append(doc)
++        return results
+diff --git a/forward-bot/src/forward_bot/infrastructure/mongo/repositories/source_repository.py b/forward-bot/src/forward_bot/infrastructure/mongo/repositories/source_repository.py
+index e9ded80..547f712 100644
+--- a/forward-bot/src/forward_bot/infrastructure/mongo/repositories/source_repository.py
++++ b/forward-bot/src/forward_bot/infrastructure/mongo/repositories/source_repository.py
+@@ -91,6 +91,13 @@ class SourceRepository(BaseRepository):
+         doc = self._to_document(source)
+         return await self.update(source.id, doc)
+ 
++    async def get_sources_by_folder_id(self, folder_id: str) -> list[Source]:
++        """Fetch all Sources assigned to a specific folder."""
++        if not ObjectId.is_valid(folder_id):
++            return []
++        docs = await self.find({"folder_id": ObjectId(folder_id)})
++        return [self._to_entity(doc) for doc in docs]
++
+     async def list_sources(
+         self,
+         filter_type: str | None = None,
+diff --git a/forward-bot/tests/api/test_folders.py b/forward-bot/tests/api/test_folders.py
+new file mode 100644
+index 0000000..6544bd8
+--- /dev/null
++++ b/forward-bot/tests/api/test_folders.py
+@@ -0,0 +1,311 @@
++"""API tests for the /api/v1/folders endpoints."""
++import pytest
++from unittest.mock import MagicMock, AsyncMock, patch
++from httpx import AsyncClient, ASGITransport
++from datetime import datetime, timezone
++from bson import ObjectId
++
++from forward_bot.app import create_app
++from forward_bot.config import Settings
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.domain.entities.source import Source
++from forward_bot.api.dependencies.providers import get_folder_repository, get_source_repository
++
++
++@pytest.fixture(autouse=True)
++def mock_db_and_telegram():
++    """Globally mock MongoDB and Telegram clients for these API tests to avoid connection errors."""
++    with patch("forward_bot.api.dependencies.providers.mongo_client") as mock_mongo, \
++         patch("forward_bot.api.dependencies.providers.telegram_client") as mock_tg:
++        mock_mongo.db = MagicMock()
++        yield mock_mongo, mock_tg
++
++
++@pytest.fixture
++def settings():
++    return Settings(
++        api_key="valid-api-key",
++        secret_key="secret",
++        mongo_uri="mongodb://localhost:27017/test_db",
++        ui_enabled=False,
++    )
++
++
++@pytest.fixture
++def app(settings):
++    return create_app(settings, lifespan=None)
++
++
++@pytest.mark.asyncio
++async def test_folders_endpoints_require_authentication(app):
++    """Confirm that endpoints fail with 401 when no credentials are provided."""
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        # GET /api/v1/folders
++        res1 = await ac.get("/api/v1/folders")
++        assert res1.status_code == 401
++
++        # GET /api/v1/folders/{id}
++        res2 = await ac.get("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e")
++        assert res2.status_code == 401
++
++        # POST /api/v1/folders
++        res3 = await ac.post("/api/v1/folders", json={"name": "Folder"})
++        assert res3.status_code == 401
++
++        # PUT /api/v1/folders/{id}
++        res4 = await ac.put("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", json={"name": "New Name"})
++        assert res4.status_code == 401
++
++        # DELETE /api/v1/folders/{id}
++        res5 = await ac.delete("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e")
++        assert res5.status_code == 401
++
++
++@pytest.mark.asyncio
++async def test_create_folder_success(app):
++    """Verify successful folder creation."""
++    mock_repo = MagicMock()
++    mock_repo.get_folder_by_name = AsyncMock(return_value=None)
++    mock_repo.add_folder = AsyncMock(side_effect=lambda f: setattr(f, "id", "65c52c6f1f2e3d4a5b6c7d8e") or "65c52c6f1f2e3d4a5b6c7d8e")
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.post("/api/v1/folders", json={"name": "Crypto Signals"}, headers=headers)
++
++    assert response.status_code == 201
++    data = response.json()
++    assert data["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert data["name"] == "Crypto Signals"
++    assert "created_at" in data
++    assert "updated_at" in data
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_create_folder_duplicate_rejection(app):
++    """Verify creating folder with duplicate name fails with 422."""
++    mock_repo = MagicMock()
++    mock_repo.get_folder_by_name = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Crypto Signals",
++        created_at=datetime.now(timezone.utc),
++        updated_at=datetime.now(timezone.utc)
++    ))
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.post("/api/v1/folders", json={"name": "crypto signals"}, headers=headers)
++
++    assert response.status_code == 422
++    data = response.json()
++    assert data["error"]["code"] == "folder_name_in_use"
++    assert "Folder name in use: crypto signals." in data["error"]["message"]
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_list_folders_success(app):
++    """Verify listing folders with precalculated source count."""
++    mock_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_repo.list_folders_with_source_count = AsyncMock(return_value=[
++        {
++            "id": "65c52c6f1f2e3d4a5b6c7d8e",
++            "name": "Crypto Signals",
++            "created_at": now,
++            "updated_at": now,
++            "source_count": 4
++        }
++    ])
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/folders", headers=headers)
++
++    assert response.status_code == 200
++    data = response.json()
++    assert len(data) == 1
++    assert data[0]["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert data[0]["name"] == "Crypto Signals"
++    assert data[0]["source_count"] == 4
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_get_folder_details_success(app):
++    """Verify retrieving folder details without embedded sources."""
++    mock_folder_repo = MagicMock()
++    mock_source_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_folder_repo.get_folder_by_id = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Crypto Signals",
++        created_at=now,
++        updated_at=now
++    ))
++    mock_source_repo.collection.count_documents = AsyncMock(return_value=2)
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_folder_repo
++    app.dependency_overrides[get_source_repository] = lambda: mock_source_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", headers=headers)
++
++    assert response.status_code == 200
++    data = response.json()
++    assert data["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert data["name"] == "Crypto Signals"
++    assert data["source_count"] == 2
++    assert data["sources"] is None
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_get_folder_details_with_sources(app):
++    """Verify retrieving folder details with embedded sources list."""
++    mock_folder_repo = MagicMock()
++    mock_source_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_folder_repo.get_folder_by_id = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Crypto Signals",
++        created_at=now,
++        updated_at=now
++    ))
++    
++    mock_sources = [
++        Source(
++            id="65c52c6f1f2e3d4a5b6c7d8a",
++            telegram_id=123,
++            telegram_username="source1",
++            display_name="Source 1",
++            type="channel",
++            folder_id="65c52c6f1f2e3d4a5b6c7d8e",
++            created_at=now,
++            updated_at=now
++        )
++    ]
++    mock_source_repo.get_sources_by_folder_id = AsyncMock(return_value=mock_sources)
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_folder_repo
++    app.dependency_overrides[get_source_repository] = lambda: mock_source_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e?include=sources", headers=headers)
++
++    assert response.status_code == 200
++    data = response.json()
++    assert data["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert data["name"] == "Crypto Signals"
++    assert data["source_count"] == 1
++    assert len(data["sources"]) == 1
++    assert data["sources"][0]["id"] == "65c52c6f1f2e3d4a5b6c7d8a"
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_get_folder_not_found(app):
++    """Verify 404 for non-existent or invalid ID format."""
++    mock_folder_repo = MagicMock()
++    mock_folder_repo.get_folder_by_id = AsyncMock(return_value=None)
++    app.dependency_overrides[get_folder_repository] = lambda: mock_folder_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        # Invalid format
++        res1 = await ac.get("/api/v1/folders/invalid-id", headers=headers)
++        assert res1.status_code == 404
++        
++        # Valid format but missing
++        res2 = await ac.get("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", headers=headers)
++        assert res2.status_code == 404
++        assert res2.json()["error"]["code"] == "folder_not_found"
++
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_rename_folder_success(app):
++    """Verify successful renaming (including self-rename validation)."""
++    mock_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_repo.get_folder_by_id = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Old Name",
++        created_at=now,
++        updated_at=now
++    ))
++    mock_repo.get_folder_by_name = AsyncMock(return_value=None)
++    mock_repo.update_folder = AsyncMock(return_value=True)
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        # Success rename to new name
++        res = await ac.put("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", json={"name": "New Name"}, headers=headers)
++        assert res.status_code == 200
++        assert res.json()["name"] == "New Name"
++
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_rename_folder_conflict(app):
++    """Verify rename conflict checks (returns 422)."""
++    mock_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_repo.get_folder_by_id = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Old Name",
++        created_at=now,
++        updated_at=now
++    ))
++    # Mocking another folder that already has the new name
++    mock_repo.get_folder_by_name = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8f",
++        name="Taken Name",
++        created_at=now,
++        updated_at=now
++    ))
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        res = await ac.put("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", json={"name": "Taken Name"}, headers=headers)
++        assert res.status_code == 422
++        assert res.json()["error"]["code"] == "folder_name_in_use"
++
++    app.dependency_overrides.clear()
++
++
++@pytest.mark.asyncio
++async def test_delete_folder_success(app):
++    """Verify successful deletion of a folder (disassociating sources is done at repo level)."""
++    mock_repo = MagicMock()
++    now = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
++    mock_repo.get_folder_by_id = AsyncMock(return_value=SourceFolder(
++        id="65c52c6f1f2e3d4a5b6c7d8e",
++        name="Delete Me",
++        created_at=now,
++        updated_at=now
++    ))
++    mock_repo.delete_folder = AsyncMock(return_value=True)
++
++    app.dependency_overrides[get_folder_repository] = lambda: mock_repo
++
++    headers = {"X-API-Key": "valid-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        res = await ac.delete("/api/v1/folders/65c52c6f1f2e3d4a5b6c7d8e", headers=headers)
++        assert res.status_code == 204
++
++    app.dependency_overrides.clear()
+diff --git a/forward-bot/tests/infrastructure/mongo/test_folder_repository.py b/forward-bot/tests/infrastructure/mongo/test_folder_repository.py
+new file mode 100644
+index 0000000..79edbdb
+--- /dev/null
++++ b/forward-bot/tests/infrastructure/mongo/test_folder_repository.py
+@@ -0,0 +1,148 @@
++"""Unit tests for the FolderRepository."""
++import pytest
++from unittest.mock import MagicMock, AsyncMock
++from bson import ObjectId
++from datetime import datetime, timezone
++
++from forward_bot.domain.entities.source_folder import SourceFolder
++from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
++
++
++@pytest.mark.asyncio
++async def test_folder_repository_crud():
++    """Verify that all basic CRUD methods of FolderRepository behave correctly."""
++    mock_db = MagicMock()
++    mock_collection = AsyncMock()
++
++    # Configure mock_db
++    collections = {
++        "source_folders": mock_collection,
++        "sources": AsyncMock()
++    }
++    mock_db.__getitem__.side_effect = lambda name: collections[name]
++
++    repo = FolderRepository(mock_db)
++
++    # 1. Verify mapping and insertion
++    folder = SourceFolder(
++        id=None,
++        name="Crypto Alerts",
++        created_at=datetime.now(timezone.utc),
++        updated_at=datetime.now(timezone.utc),
++    )
++
++    mock_insert_result = MagicMock()
++    mock_insert_result.inserted_id = ObjectId("65c52c6f1f2e3d4a5b6c7d8e")
++    mock_collection.insert_one.return_value = mock_insert_result
++
++    inserted_id = await repo.add_folder(folder)
++    assert inserted_id == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert folder.id == "65c52c6f1f2e3d4a5b6c7d8e"
++    mock_collection.insert_one.assert_called_once()
++
++    # Verify document values passed to insert_one
++    called_doc = mock_collection.insert_one.call_args[0][0]
++    assert called_doc["name"] == "Crypto Alerts"
++
++    # 2. Verify retrieval by ID
++    mock_doc = {
++        "_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e"),
++        "name": "Crypto Alerts",
++        "created_at": datetime.now(timezone.utc),
++        "updated_at": datetime.now(timezone.utc),
++    }
++    mock_collection.find_one.return_value = mock_doc
++
++    fetched = await repo.get_folder_by_id("65c52c6f1f2e3d4a5b6c7d8e")
++    assert fetched is not None
++    assert fetched.id == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert fetched.name == "Crypto Alerts"
++
++    # 3. Verify retrieval by name (case-insensitive)
++    mock_collection.find_one.reset_mock()
++    fetched = await repo.get_folder_by_name("crypto alerts")
++    assert fetched is not None
++    mock_collection.find_one.assert_called_with({"name": {"$regex": "^crypto\\ alerts$", "$options": "i"}})
++
++    # 4. Verify retrieval by name excluding ID
++    mock_collection.find_one.reset_mock()
++    fetched = await repo.get_folder_by_name("crypto alerts", exclude_id="65c52c6f1f2e3d4a5b6c7d8e")
++    assert fetched is not None
++    mock_collection.find_one.assert_called_with({
++        "name": {"$regex": "^crypto\\ alerts$", "$options": "i"},
++        "_id": {"$ne": ObjectId("65c52c6f1f2e3d4a5b6c7d8e")}
++    })
++
++    # 5. Verify update_folder
++    mock_replace_result = MagicMock()
++    mock_replace_result.modified_count = 1
++    mock_collection.replace_one.return_value = mock_replace_result
++
++    updated = await repo.update_folder(folder)
++    assert updated is True
++    mock_collection.replace_one.assert_called_once()
++
++    # 6. Verify delete_folder with sources disassociation
++    mock_delete_result = MagicMock()
++    mock_delete_result.deleted_count = 1
++    mock_collection.delete_one.return_value = mock_delete_result
++
++    sources_mock = collections["sources"]
++    sources_mock.update_many.return_value = MagicMock(modified_count=2)
++
++    deleted = await repo.delete_folder("65c52c6f1f2e3d4a5b6c7d8e")
++    assert deleted is True
++    mock_collection.delete_one.assert_called_with({"_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e")})
++    sources_mock.update_many.assert_called_once_with(
++        {"folder_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e")},
++        {"$set": {"folder_id": None}}
++    )
++
++
++@pytest.mark.asyncio
++async def test_list_folders_with_source_count():
++    """Verify aggregation pipeline queries in list_folders_with_source_count."""
++    mock_db = MagicMock()
++    mock_collection = AsyncMock()
++
++    # Configure mock_db
++    collections = {
++        "source_folders": mock_collection,
++        "sources": AsyncMock()
++    }
++    mock_db.__getitem__.side_effect = lambda name: collections[name]
++
++    repo = FolderRepository(mock_db)
++
++    # Aggregation return mock
++    mock_agg_result = [
++        {
++            "_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e"),
++            "name": "Crypto Alerts",
++            "created_at": datetime.now(timezone.utc),
++            "updated_at": datetime.now(timezone.utc),
++            "source_count": 5
++        }
++    ]
++    mock_cursor = MagicMock()
++    mock_cursor.to_list = AsyncMock(return_value=mock_agg_result)
++    mock_collection.aggregate = MagicMock(return_value=mock_cursor)
++
++    # List all
++    results = await repo.list_folders_with_source_count()
++    assert len(results) == 1
++    assert results[0]["id"] == "65c52c6f1f2e3d4a5b6c7d8e"
++    assert results[0]["source_count"] == 5
++
++    # Check aggregate pipeline called
++    pipeline = mock_collection.aggregate.call_args[0][0]
++    # Check lookup is in pipeline
++    assert any("$lookup" in step for step in pipeline)
++    assert any("$project" in step for step in pipeline)
++    assert any("$sort" in step for step in pipeline)
++
++    # List with filter
++    mock_collection.aggregate.reset_mock()
++    results_filtered = await repo.list_folders_with_source_count("crypto")
++    pipeline_filtered = mock_collection.aggregate.call_args[0][0]
++    assert any("$match" in step for step in pipeline_filtered)

@@ -1,7 +1,7 @@
 # Sprint Status Tracking for Forward Bot
 # =======================================
 # Generated: 2026-06-02
-# Last Updated: 2026-06-08
+# Last Updated: 2026-06-18
 # Project: Forward Bot
 # Project Key: NOKEY
 # Tracking System: file-system
@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-02"
-last_updated: "2026-06-09"
+last_updated: "2026-06-18"
 work_started: "2026-06-02"
 work_completed: "2026-06-09"
 first_story_created: "2026-06-02"
@@ -57,19 +57,19 @@ development_status:
   epic-1-retrospective: done
 
   # ===== EPIC 2: Source Catalog & Folder Organization =====
-  epic-2: in-progress
+  epic-2: done
 
   2-1-source-registration-retrieval: done
   2-2-source-listing-updates: done
-  2-3-folder-crud: backlog
+  2-3-folder-crud: done
 
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ===== EPIC 3: Forwarding Rule Configuration =====
-  epic-3: backlog
+  epic-3: in-progress
 
-  3-1-forwarding-rule-crud-api: backlog
-  3-2-replacement-rule-crud-api: backlog
+  3-1-forwarding-rule-crud-api: done
+  3-2-replacement-rule-crud-api: review
   3-3-atomic-rule-cache-cache-refresher: backlog
 
   epic-3-retrospective: optional
@@ -113,18 +113,18 @@ summary:
   total_stories: 24
   total_retrospectives: 6
 
-  epics_backlog: 4
+  epics_backlog: 3
   epics_in_progress: 1
-  epics_done: 1
+  epics_done: 2
 
-  stories_backlog: 19
+  stories_backlog: 16
   stories_ready_for_dev: 0
   stories_in_progress: 0
-  stories_in_review: 0
-  stories_done: 6
+  stories_in_review: 1
+  stories_done: 7
 
-  retrospectives_optional: 5
-  retrospectives_done: 1
+  retrospectives_optional: 4
+  retrospectives_done: 2
 
 # STORY ORDERING & DEPENDENCIES
 # ==============================

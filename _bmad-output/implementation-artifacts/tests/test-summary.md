@@ -1,148 +1,108 @@
-# Test Automation Summary — Epic 1: Project Foundation & Telegram Connectivity
+# Test Automation Summary — Forward Bot
 
-**Generated:** 2026-06-08  
 **Framework:** pytest 9.0.3 + pytest-asyncio 1.4.0 (Python 3.13.3)  
-**Test File:** [`tests/e2e/test_epic1_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic1_e2e.py)
+**Test Suites:**
+- E2E Tests: [`tests/e2e/test_epic1_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic1_e2e.py), [`tests/e2e/test_epic2_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic2_e2e.py)
+- API Tests: [`tests/api/test_folders.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_folders.py), [`tests/api/test_sources.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_sources.py), [`tests/api/test_health.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_health.py)
+- Repository & Client Tests: [`tests/infrastructure/mongo/`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/infrastructure/mongo/)
 
 ---
 
 ## Generated Tests
 
-### Story 1.1 — Project Scaffold & Directory Structure
+### Epic 1 — Project Foundation & Telegram Connectivity
 
-| Test | Description |
-|------|-------------|
-| `test_source_package_importable` | All top-level `forward_bot` sub-packages import without error |
-| `test_project_files_exist` | Critical scaffold files (`pyproject.toml`, `__init__.py`, `tests/`) exist on disk |
+#### Story 1.1 — Project Scaffold & Directory Structure
+- `test_source_package_importable`: All top-level `forward_bot` modules import without error.
+- `test_project_files_exist`: Critical scaffold files (`pyproject.toml`, `__init__.py`, `tests/`) exist.
 
-### Story 1.2 — Application Settings & MongoDB Client
+#### Story 1.2 — Application Settings & MongoDB Client
+- `TestSettingsValidation`: Pydantic settings loading, required fields validation, defaults (`telegram_session_path`, `media_replacement_base_dir`), and helper object conversions.
+- `TestValidateSettingsHelper`: Obfuscation, whitespace validation, placeholder verification.
+- `TestMongoClientHolder`: connect/close database clients lifecycle, default database name fallback.
 
-#### Settings Validation (`TestSettingsValidation`)
+#### Story 1.3 — FastAPI Shell, Health Endpoints & Background Tasks
+- `TestHealthEndpoints`: `/health` (Liveness), `/health/telegram` (Telegram status), `/health/ready` (Readiness check with ping timeouts), Swagger `/docs`, and ReDoc `/redoc`.
+- `TestBackgroundTaskStubs`: Clean cancellation/unwinding of `run_cache_refresher`, `run_mapping_sweeper`, and `run_telegram_worker`.
+- `TestLifespanIntegration`: Lifespan startup failure paths, clean shutdowns canceling background tasks and closing connections.
 
-| Test | AC |
-|------|----|
-| `test_required_fields_raise_on_missing` | Missing all required env vars → `ValidationError` |
-| `test_mongo_uri_required` | Missing MONGO_URI alone → `ValidationError` |
-| `test_telegram_api_id_alias_api_id` | `API_ID` / `API_HASH` aliases resolve correctly |
-| `test_telegram_api_id_primary_key` | `TELEGRAM_API_ID` primary key resolves |
-| `test_default_telegram_session_path` | Default session path is `./data/telegram.session` |
-| `test_defaults_media_replacement_dir` | Default media dir is `./data/replacement-images` |
-| `test_defaults_numeric_fields` | Default numeric fields (`port`, `hot_reload_interval`, etc.) |
-| `test_hot_reload_interval_zero_rejected` | `hot_reload_interval=0` raises `ValidationError` |
-| `test_hot_reload_interval_negative_rejected` | Negative `hot_reload_interval` raises `ValidationError` |
-| `test_get_telegram_session_path_returns_path_object` | Helper method returns `pathlib.Path` |
-| `test_get_media_replacement_dir_returns_path_object` | Helper method returns `pathlib.Path` |
-
-#### Validate Settings Helper (`TestValidateSettingsHelper`)
-
-| Test | AC |
-|------|----|
-| `test_blank_api_key_raises` | Whitespace-only API_KEY raises `ValueError` |
-| `test_placeholder_api_key_raises` | Placeholder `your-api-key-here` raises `ValueError` |
-| `test_blank_secret_key_raises` | Whitespace-only SECRET_KEY raises `ValueError` |
-| `test_placeholder_secret_key_raises` | Placeholder SECRET_KEY raises `ValueError` |
-| `test_blank_mongo_uri_raises` | Whitespace-only MONGO_URI raises `ValueError` |
-| `test_valid_settings_pass` | Valid settings pass without raising |
-
-#### MongoDB Client Holder (`TestMongoClientHolder`)
-
-| Test | AC |
-|------|----|
-| `test_connect_sets_client_and_db` | `connect()` populates `client` and `db` references |
-| `test_close_clears_client_and_db` | `close()` sets both to `None` |
-| `test_close_is_idempotent_when_already_closed` | Double `close()` does not raise |
-| `test_db_name_fallback_when_empty_path` | Empty URI path falls back to `"forward_bot"` |
-
-### Story 1.3 — FastAPI Shell, Health Endpoints & Background Tasks
-
-#### Health Endpoints (`TestHealthEndpoints`)
-
-| Test | AC |
-|------|----|
-| `test_liveness_returns_200_ok` | `GET /health` → HTTP 200 `{"status": "ok"}` |
-| `test_telegram_stub_disconnected` | `GET /health/telegram` → `{"telegram": "disconnected", "last_event": null}` |
-| `test_readiness_mongodb_up` | `GET /health/ready` → HTTP 200 `{"mongodb": "up"}` when ping succeeds |
-| `test_readiness_mongodb_down_exception` | `GET /health/ready` → HTTP 503 `{"mongodb": "down"}` on exception |
-| `test_readiness_mongodb_client_none` | `GET /health/ready` → HTTP 503 when `db` is `None` |
-| `test_api_docs_accessible` | `/docs` (Swagger UI) returns HTTP 200 |
-| `test_redoc_accessible` | `/redoc` returns HTTP 200 |
-
-#### Background Task Stubs (`TestBackgroundTaskStubs`)
-
-| Test | AC |
-|------|----|
-| `test_cache_refresher_cancels_cleanly` | `run_cache_refresher` cancels with `CancelledError` |
-| `test_mapping_sweeper_cancels_cleanly` | `run_mapping_sweeper` cancels with `CancelledError` |
-| `test_telegram_worker_cancels_cleanly` | `run_telegram_worker` cancels with `CancelledError` |
-
-#### Lifespan Integration (`TestLifespanIntegration`)
-
-| Test | AC |
-|------|----|
-| `test_lifespan_raises_if_mongodb_connect_fails` | MongoDB `connect()` failure → `RuntimeError` aborts startup |
-| `test_lifespan_raises_if_mongodb_ping_fails` | MongoDB ping timeout → `RuntimeError` aborts startup |
-| `test_lifespan_raises_if_mongodb_db_none` | `db=None` after connect → `RuntimeError` aborts startup |
-| `test_lifespan_raises_and_closes_mongo_when_telegram_fails` | Telegram failure → `mongo_client.close()` is still called |
-| `test_lifespan_shutdown_cancels_tasks_and_disconnects` | Shutdown calls `telegram_client.disconnect()` + `mongo_client.close()` |
-
-### Story 1.4 — Telegram Authentication & Session Management
-
-#### TelegramClientHolder (`TestTelegramClientHolder`)
-
-| Test | AC |
-|------|----|
-| `test_connect_no_session_remains_disconnected` | Missing session file → stays `disconnected`, no exception |
-| `test_connect_success_sets_status_connected` | Valid session + authorized → `status="connected"`, `is_connected=True`, `last_event` set |
-| `test_connect_unauthorized_session_raises_runtime_error` | `is_user_authorized=False` → `RuntimeError("Telegram session is invalid")` |
-| `test_connect_auth_key_unregistered_raises` | `AuthKeyUnregisteredError` → `RuntimeError` (session invalidation) |
-| `test_connect_user_deactivated_raises` | `UserDeactivatedError` → `RuntimeError` (session invalidation) |
-| `test_connect_session_expired_raises` | `SessionExpiredError` → `RuntimeError` (session invalidation) |
-| `test_disconnect_clears_client_and_status` | `disconnect()` sets `status="disconnected"`, `client=None`, updates `last_event` |
-| `test_disconnect_when_already_disconnected` | `disconnect()` with no client is a safe no-op |
-| `test_is_connected_false_when_status_not_connected` | `is_connected` property returns `False` when status ≠ "connected" |
-| `test_is_connected_false_when_client_not_connected` | `is_connected` returns `False` when Telethon client drops connection |
-| `test_last_event_initially_none` | Fresh holder has `last_event=None` |
-| `test_last_event_set_to_iso_string_on_connect` | After successful connect, `last_event` is a valid ISO 8601 string |
-
-#### Telegram Health Endpoint (`TestTelegramHealthEndpoint`)
-
-| Test | AC |
-|------|----|
-| `test_health_telegram_connected_status` | `/health/telegram` reflects `status="connected"` and `last_event` timestamp |
-| `test_health_telegram_reconnecting_status` | `/health/telegram` reflects `status="reconnecting"` |
+#### Story 1.4 — Telegram Authentication & Session Management
+- `TestTelegramClientHolder`: Connection states (`connected`, `disconnected`, `connecting`), user authentication invalidations, error handling (`AuthKeyUnregisteredError`, `UserDeactivatedError`, `SessionExpiredError`).
+- `TestTelegramHealthEndpoint`: `/health/telegram` reflection of connected/reconnecting status.
 
 ---
 
-## Coverage
+### Epic 2 — Source Catalog & Folder Organization
 
-| Area | Tests Added | Notes |
-|------|-------------|-------|
-| Project scaffold (1.1) | 2 | Module imports + file existence |
-| Settings validation (1.2) | 16 | Pydantic fields, aliases, validators, helpers |
-| MongoDB client lifecycle (1.2) | 4 | Connect, close, idempotency, DB name fallback |
-| Health API endpoints (1.3) | 7 | Liveness, readiness, telegram, docs |
-| Background task stubs (1.3) | 3 | Cancellation of all three tasks |
-| Lifespan integration (1.3) | 5 | MongoDB failure, Telegram failure, shutdown paths |
-| TelegramClientHolder (1.4) | 12 | All session states + error types + `is_connected` + `last_event` |
-| Telegram health endpoint (1.4) | 2 | Live status reflection |
+#### E2E Workflow Test (`test_epic2_e2e_workflow`)
+- Initial state verification (empty listings).
+- Auth gate verification (API key and cookie validation).
+- Folder CRUD flow (unique constraints, case-insensitive collision checks, debounced name availability, listing sorted alphabetically).
+- Source registration flow (handling disconnected/connected Telegram client states, channel/group resolution via Telethon entity, duplicate username/id collision checks).
+- Source grouping and updating (assigning to folders, validating folder existence).
+- Folder details retrieval with/without embedded sources (mapping `?include=sources`).
+- Self-renaming check (allowed) and conflicting renaming checks (rejected).
+- Folder deletion disassociation verification (sources are detached, updating `folder_id` to `null` while preserving the source documents).
 
-**Total new E2E tests: 52**  
-**Total suite (existing + new): 71 passed in 1.39s**  
-**Zero failures, zero warnings**
+#### API Router Tests
+
+##### Folders Router (`tests/api/test_folders.py`)
+- `test_folders_endpoints_require_authentication`: Endpoints fail with 401 when no credentials are provided.
+- `test_create_folder_success`: Folder creation returns 201 with generated fields.
+- `test_create_folder_duplicate_rejection`: Duplicate folder name fails with 422 `folder_name_in_use`.
+- `test_list_folders_success`: Retrieval returns folders sorted alphabetically with pre-calculated `source_count`.
+- `test_get_folder_details_success`: Retrieves details without embedded sources.
+- `test_get_folder_details_with_sources`: Retrieves folder details and embedded sources list.
+- `test_get_folder_not_found`: Return 404 for invalid hex ID format or non-existent folders.
+- `test_rename_folder_success` / `test_rename_folder_conflict`: Self-rename and renaming conflict checks.
+- `test_delete_folder_success`: Deleting folder deletes the document and disassociates sources.
+
+##### Sources Router (`tests/api/test_sources.py`)
+- `test_sources_endpoints_require_authentication`: Checks API key auth.
+- `test_get_source_success` / `test_get_source_not_found`: Retrieves registered source.
+- `test_register_source_telegram_disconnected`: Fails with 503 if Telethon client is offline.
+- `test_register_source_success_channel` / `test_register_source_success_group`: Registers channel/group and saves mappings.
+- `test_register_source_duplicate_check`: Triggers 422 if username or Telegram ID is registered.
+- `test_register_source_resolve_failed`: Triggers 422 if Telegram cannot locate the reference.
+- `test_delete_source_success` / `test_delete_source_in_use_rejection`: Safe deletions, blocked with 409 if source is referenced by forwarding rules.
+- `test_list_sources_success` / `test_list_sources_page_size_cap`: Pagination and maximum page limit caps (200).
+- `test_list_sources_filtering`: Filter items by type (`channel`/`group`) and `folder_id` (including `"null"` for uncategorized sources).
+- `test_update_source_success` / `test_patch_source_success`: Verify full PUT and partial PATCH updates.
+
+---
+
+## Suite Summary & Coverage
+
+| Test Suite | Total Passed | Description |
+|------------|--------------|-------------|
+| `test_epic1_e2e.py` | 52 | E2E foundation client tests |
+| `test_epic2_e2e.py` | 1 | E2E complete workflow test |
+| `test_folders.py` | 10 | Folders HTTP API integration tests |
+| `test_sources.py` | 19 | Sources HTTP API integration tests |
+| `test_health.py` | 5 | Health endpoints unit tests |
+| `test_client.py` | 2 | MongoClientHolder unit tests |
+| `test_folder_repository.py` | 2 | Folder repository database mapper tests |
+| `test_source_repository.py` | 3 | Source repository database mapper tests |
+| `test_telegram_client.py` | 5 | Telegram connection unit tests |
+| `test_config.py` | 7 | Settings validation unit tests |
+
+**Total passing tests in project: 106**  
+**Execution duration: ~3.07 seconds**  
+**Warnings: 2 (FastAPI standard deprecation warning)**  
 
 ---
 
 ## Test Run Results
 
 ```
-============================= 71 passed in 1.39s ==============================
+======================= 106 passed, 2 warnings in 3.07s =======================
 ```
 
-All 52 new E2E tests pass alongside the original 19 unit tests with no regressions.
+All E2E and API integration tests pass with 100% success rate.
+
+---
 
 ## Next Steps
 
-- Add integration tests against a real MongoDB instance (testcontainers) for Epic 2+
-- Add tests for the `run_auth()` CLI flow using mocked `input()` / `getpass`
-- Run tests in CI pipeline on each PR
-- Wire code coverage reporting (`pytest-cov`) to enforce minimum thresholds per epic
+- Integrate Epic 3 (Forwarding Rule Configuration) CRUD endpoints and verify cached rule operations.
+- Implement UI components for folder CRUD modals and source listings matching the new endpoint specs.

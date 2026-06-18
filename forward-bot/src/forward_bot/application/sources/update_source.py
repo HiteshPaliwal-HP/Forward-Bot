@@ -4,7 +4,7 @@ from typing import Any
 from forward_bot.domain.entities.source import Source
 from forward_bot.domain.exceptions import (
     SourceNotFoundException,
-    FolderNotFoundException,
+    FolderReferenceNotFoundException,
     SourceUsernameAlreadyExistsException,
 )
 from forward_bot.infrastructure.mongo.repositories.source_repository import SourceRepository
@@ -33,7 +33,7 @@ class UpdateSource:
                 # Check folder existence
                 exists = await self.source_repo.folder_exists(folder_id)
                 if not exists:
-                    raise FolderNotFoundException(folder_id)
+                    raise FolderReferenceNotFoundException(folder_id)
 
         # 3. Validate duplicate username if telegram_username is provided
         if "telegram_username" in update_fields:
