@@ -8,6 +8,7 @@ from forward_bot.infrastructure.mongo.repositories.source_repository import Sour
 from forward_bot.infrastructure.mongo.repositories.folder_repository import FolderRepository
 from forward_bot.infrastructure.mongo.repositories.rule_repository import ForwardingRuleRepository
 from forward_bot.infrastructure.mongo.repositories.replacement_repository import ReplacementRuleRepository
+from forward_bot.infrastructure.mongo.repositories.sampling_repository import SamplingRepository
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -35,6 +36,11 @@ def get_rule_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> Forwardin
 def get_replacement_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> ReplacementRuleRepository:
     """Injects the ReplacementRuleRepository."""
     return ReplacementRuleRepository(db)
+
+
+def get_sampling_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> SamplingRepository:
+    """Injects the SamplingRepository."""
+    return SamplingRepository(db)
 
 
 def get_telegram_client() -> TelegramClientHolder:

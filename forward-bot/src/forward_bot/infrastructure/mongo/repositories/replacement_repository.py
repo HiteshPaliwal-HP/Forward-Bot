@@ -67,6 +67,42 @@ class ReplacementRuleRepository(BaseRepository):
         """Delete a replacement rule by ObjectId. Returns True if deleted."""
         return await self.delete(id)
 
+    async def list_all_replacements_for_rules(
+        self, rule_ids: list[str]
+    ) -> dict[str, list[ReplacementRule]]:
+        """Fetch ALL replacement rules for a set of forwarding rule IDs in ONE query.
+
+        Uses a ``$in`` filter to fetch all matching documents in a single MongoDB
+        round-trip, then groups results in-memory by ``forwarding_rule_id``.
+        Within each group the order is ``created_at ASC, _id ASC`` (pipeline order, FR-7).
+
+        This is the O(1) replacement for the O(N) per-rule sequential loop previously
+        used in ``build_rule_cache``. At NFR-Scale (100 active rules) this reduces cache
+        refresh DB round-trips from 101 to 4 (sources, folders, rules, replacements).
+
+        Args:
+            rule_ids: List of forwarding rule ID hex strings whose replacement rules to fetch.
+
+        Returns:
+            ``dict[forwarding_rule_id, list[ReplacementRule]]`` — every requested rule_id
+            appears as a key; missing ones map to ``[]``.
+        """
+        if not rule_ids:
+            return {}
+
+        cursor = (
+            self.collection.find({"forwarding_rule_id": {"$in": rule_ids}})
+            .sort([("created_at", 1), ("_id", 1)])  # pipeline application order (FR-7)
+        )
+        docs = await cursor.to_list(length=None)
+
+        # Group in-memory; pre-seed all requested IDs so callers get [] for rules with no replacements
+        grouped: dict[str, list[ReplacementRule]] = {rid: [] for rid in rule_ids}
+        for doc in docs:
+            entity = self._to_entity(doc)
+            grouped.setdefault(entity.forwarding_rule_id, []).append(entity)
+        return grouped
+
     async def list_replacements_for_rule(self, rule_id: str) -> list[ReplacementRule]:
         """List all replacement rules for a parent forwarding rule, ordered by created_at ASC.
 
@@ -75,7 +111,7 @@ class ReplacementRuleRepository(BaseRepository):
         """
         cursor = (
             self.collection.find({"forwarding_rule_id": rule_id})
-            .sort("created_at", 1)  # ASC — pipeline application order (FR-7)
+            .sort([("created_at", 1), ("_id", 1)])  # ASC with secondary _id sort to prevent collision
         )
         docs = await cursor.to_list(length=None)
         return [self._to_entity(doc) for doc in docs]

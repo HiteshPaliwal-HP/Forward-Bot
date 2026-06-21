@@ -4,7 +4,7 @@ baseline_commit: 57848c6e377c8a087419ba5f23ff93b6c46e006b
 
 # Story 3.2: Replacement Rule CRUD API
 
-Status: review
+Status: done
 
 ## Story
 
@@ -144,6 +144,11 @@ so that **I can rewrite forwarded text — removing competitor names, swapping l
     - Auth rejection (no key → 401)
     - Cascade delete verified (parent delete removes children — integration test)
   - [x] All 182 tests pass (35 new + 147 regression — 0 failures)
+
+### Review Findings
+
+- [x] [Review][Patch] Microsecond timestamp collision in pipeline sorting [forward-bot/src/forward_bot/infrastructure/mongo/repositories/replacement_repository.py:70-81]
+- [x] [Review][Patch] Missing `created_at` and `updated_at` optionality in response schema [forward-bot/src/forward_bot/api/schemas/replacement_rule.py:50-51]
 
 ---
 

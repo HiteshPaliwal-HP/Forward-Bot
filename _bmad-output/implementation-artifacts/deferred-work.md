@@ -40,3 +40,20 @@ The epic spec does not cover what happens when `POST /api/v1/sources` is called 
 - Raises `ValueError` for unknown references; `ChannelPrivateError` for private channels; `UsernameNotOccupiedError` for non-existent usernames — all should map to `telegram_resolve_failed` (HTTP 422)
 - Rate limiting: Telegram allows ~30 resolve calls/second; safe for typical operator usage but document in dev notes
 
+## Deferred from: code review of 3-3-atomic-rule-cache-cache-refresher.md (2026-06-18)
+
+- ~~**Sequential O(N) database queries for replacement rules**~~: **RESOLVED** (2026-06-19, Epic 3 Retro)
+  Added `ReplacementRuleRepository.list_all_replacements_for_rules(rule_ids)` — a single `$in` query that fetches all replacement rules for all active rules in one MongoDB round-trip, then groups in-memory. `build_rule_cache` now performs exactly 4 DB queries regardless of rule count (was 4+N). `cache_refresher.py` updated; tests updated in `test_cache_refresher.py`.
+
+## Resolved during: Epic 3 Retrospective (2026-06-19)
+
+- **`_id`/`id` Pydantic v2 serialization-alias pattern documented**: `MongoBaseModel` docstring in `api/schemas/base.py` now contains the definitive two-pattern guide (Pattern A: alias-only subclass; Pattern B: subclass with extra `@field_validator`). Common mistakes listed. Prevents recurrence of the duplicate-validator Pydantic error in Epic 6 schemas.
+
+## Deferred from: code review of 4-1-pipeline-infrastructure-context-protocol-engine-message-mapping (2026-06-19)
+
+- **Pagination missing in `list_sources` and `list_rules` during cache refresh**: Fetching uses a hardcoded `page_size=10000`. If limits exceed this, silent truncation occurs. (Deferred, pre-existing).
+- **BSON limit risk for `$in` query in `list_all_replacements_for_rules`**: If the number of `rule_ids` grows extremely large, the `$in` clause may exceed the 16MB BSON document size limit. (Deferred, pre-existing).
+
+## Deferred from: code review of 4-2-filter-pipeline-steps-steps-1-5.md (2026-06-21)
+
+- **Dynamic regex compilation not cached locally when global cache is missing**: If precompiled cache is missing, it dynamically compiles `re.compile(kw)` for every keyword for every message processed. This could be a performance bottleneck under high load.

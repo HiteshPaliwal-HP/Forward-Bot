@@ -1,7 +1,7 @@
 # Sprint Status Tracking for Forward Bot
 # =======================================
 # Generated: 2026-06-02
-# Last Updated: 2026-06-18
+# Last Updated: 2026-06-20
 # Project: Forward Bot
 # Project Key: NOKEY
 # Tracking System: file-system
@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-02"
-last_updated: "2026-06-18"
+last_updated: "2026-06-21"
 work_started: "2026-06-02"
 work_completed: "2026-06-09"
 first_story_created: "2026-06-02"
@@ -66,19 +66,19 @@ development_status:
   epic-2-retrospective: done
 
   # ===== EPIC 3: Forwarding Rule Configuration =====
-  epic-3: in-progress
+  epic-3: done
 
   3-1-forwarding-rule-crud-api: done
-  3-2-replacement-rule-crud-api: review
-  3-3-atomic-rule-cache-cache-refresher: backlog
+  3-2-replacement-rule-crud-api: done
+  3-3-atomic-rule-cache-cache-refresher: done
 
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # ===== EPIC 4: Core Message Forwarding Engine =====
-  epic-4: backlog
+  epic-4: in-progress
 
-  4-1-pipeline-infrastructure-context-protocol-engine-message-mapping: backlog
-  4-2-filter-pipeline-steps-steps-1-5: backlog
+  4-1-pipeline-infrastructure-context-protocol-engine-message-mapping: done
+  4-2-filter-pipeline-steps-steps-1-5: done
   4-3-transform-media-pipeline-steps-steps-6-16: backlog
   4-4-telegram-delivery-reliability: backlog
   4-5-telegram-worker-end-to-end-message-forwarding: backlog
@@ -113,18 +113,18 @@ summary:
   total_stories: 24
   total_retrospectives: 6
 
-  epics_backlog: 3
+  epics_backlog: 2
   epics_in_progress: 1
-  epics_done: 2
+  epics_done: 3
 
-  stories_backlog: 16
+  stories_backlog: 13
   stories_ready_for_dev: 0
   stories_in_progress: 0
-  stories_in_review: 1
-  stories_done: 7
+  stories_in_review: 0
+  stories_done: 11
 
-  retrospectives_optional: 4
-  retrospectives_done: 2
+  retrospectives_optional: 3
+  retrospectives_done: 3
 
 # STORY ORDERING & DEPENDENCIES
 # ==============================

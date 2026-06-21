@@ -76,6 +76,15 @@ class FolderRepository(BaseRepository):
             )
         return deleted
 
+    async def list_folders(self) -> list[SourceFolder]:
+        """Fetch all SourceFolders from the database mapped to domain entities.
+
+        Returns all folders in the collection with no filtering or pagination.
+        Used by the cache refresher (Story 3.3) to populate ``RuleCache.folders``.
+        """
+        docs = await self.find({})
+        return [self._to_entity(doc) for doc in docs]
+
     async def list_folders_with_source_count(self, name_filter: str | None = None) -> list[dict[str, Any]]:
         """List folders with their source counts using a single aggregate query."""
         pipeline: list[dict[str, Any]] = []

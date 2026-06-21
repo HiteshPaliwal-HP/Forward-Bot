@@ -54,6 +54,16 @@ async def default_lifespan(app: FastAPI):
                 await mongo_client.db[REPLACEMENT_RULES].create_index(
                     [("forwarding_rule_id", 1), ("is_active", 1), ("created_at", 1)], background=True
                 )
+                # Message mapping compound index (pre-created for Epic 4 Story 4.1)
+                from forward_bot.api.schemas.base import MESSAGE_MAPPINGS
+                await mongo_client.db[MESSAGE_MAPPINGS].create_index(
+                    [
+                        ("forwarding_rule_id", 1),
+                        ("source_channel_id", 1),
+                        ("source_message_id", 1),
+                    ],
+                    background=True
+                )
                 logger.info("mongodb_indexes_created", message="MongoDB indexes verified/created successfully")
             except Exception as e:
                 logger.error("mongodb_index_creation_failed", error=str(e), message="Failed to create MongoDB indexes")
@@ -73,7 +83,7 @@ async def default_lifespan(app: FastAPI):
         raise e
 
     # Start background task stubs
-    cache_task = asyncio.create_task(run_cache_refresher())
+    cache_task = asyncio.create_task(run_cache_refresher(settings, mongo_client.db))
     sweeper_task = asyncio.create_task(run_mapping_sweeper())
     worker_task = asyncio.create_task(run_telegram_worker())
 

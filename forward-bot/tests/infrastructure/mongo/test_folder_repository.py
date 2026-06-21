@@ -146,3 +146,97 @@ async def test_list_folders_with_source_count():
     results_filtered = await repo.list_folders_with_source_count("crypto")
     pipeline_filtered = mock_collection.aggregate.call_args[0][0]
     assert any("$match" in step for step in pipeline_filtered)
+
+
+# ---------------------------------------------------------------------------
+# list_folders — Story 3.3 addition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_folders_returns_all_folders():
+    """list_folders() fetches all SourceFolders with no filtering (Story 3.3)."""
+    mock_db = MagicMock()
+    mock_collection = AsyncMock()
+    mock_db.__getitem__.return_value = mock_collection
+
+    now = datetime.now(timezone.utc)
+    mock_docs = [
+        {"_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8e"), "name": "Folder A",
+         "created_at": now, "updated_at": now},
+        {"_id": ObjectId("65c52c6f1f2e3d4a5b6c7d8f"), "name": "Folder B",
+         "created_at": now, "updated_at": now},
+    ]
+
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=mock_docs)
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    repo = FolderRepository(mock_db)
+    folders = await repo.list_folders()
+
+    assert len(folders) == 2
+    assert all(isinstance(f, SourceFolder) for f in folders)
+    names = {f.name for f in folders}
+    assert names == {"Folder A", "Folder B"}
+
+
+@pytest.mark.asyncio
+async def test_list_folders_called_with_empty_filter():
+    """list_folders() queries the collection with an empty filter ({})."""
+    mock_db = MagicMock()
+    mock_collection = AsyncMock()
+    mock_db.__getitem__.return_value = mock_collection
+
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=[])
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    repo = FolderRepository(mock_db)
+    await repo.list_folders()
+
+    mock_collection.find.assert_called_once_with({})
+
+
+@pytest.mark.asyncio
+async def test_list_folders_empty_collection():
+    """list_folders() returns an empty list when the collection is empty."""
+    mock_db = MagicMock()
+    mock_collection = AsyncMock()
+    mock_db.__getitem__.return_value = mock_collection
+
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=[])
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    repo = FolderRepository(mock_db)
+    folders = await repo.list_folders()
+
+    assert folders == []
+
+
+@pytest.mark.asyncio
+async def test_list_folders_maps_to_domain_entity():
+    """list_folders() correctly maps MongoDB documents to SourceFolder entities."""
+    mock_db = MagicMock()
+    mock_collection = AsyncMock()
+    mock_db.__getitem__.return_value = mock_collection
+
+    oid = ObjectId("65c52c6f1f2e3d4a5b6c7d8e")
+    now = datetime.now(timezone.utc)
+    mock_doc = {"_id": oid, "name": "My Folder", "created_at": now, "updated_at": now}
+
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=[mock_doc])
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    repo = FolderRepository(mock_db)
+    folders = await repo.list_folders()
+
+    assert len(folders) == 1
+    folder = folders[0]
+    assert folder.id == str(oid)
+    assert folder.name == "My Folder"
+    assert folder.created_at == now
+    assert folder.updated_at == now
+

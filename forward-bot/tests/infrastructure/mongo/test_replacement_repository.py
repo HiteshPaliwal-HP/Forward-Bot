@@ -303,7 +303,7 @@ async def test_list_replacements_for_rule_returns_ordered_entities():
 
     # Verify query uses string comparison (not ObjectId)
     mock_collection.find.assert_called_once_with({"forwarding_rule_id": PARENT_OID})
-    mock_cursor.sort.assert_called_once_with("created_at", 1)   # ASC — pipeline order
+    mock_cursor.sort.assert_called_once_with([("created_at", 1), ("_id", 1)])   # ASC with secondary sort
 
 
 @pytest.mark.asyncio

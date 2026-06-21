@@ -1,6 +1,6 @@
 """Pydantic schemas for Replacement Rule API request/response models."""
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -47,12 +47,11 @@ class ReplacementRuleResponse(MongoBaseModel):
     replacement_text: str
     match_mode: str
     is_active: bool
-    created_at: datetime   # serialized as ISO 8601 UTC string by MongoBaseModel.serialize_dt
-    updated_at: datetime
-    # ⚠️ created_at and updated_at are non-Optional here. The domain entity uses
-    # Optional[datetime] for flexibility, but use cases MUST always set both to
-    # datetime.now(timezone.utc) before persisting. A None value here will cause
-    # a Pydantic validation error at response serialization time.
+    created_at: Optional[datetime] = None   # serialized as ISO 8601 UTC string by MongoBaseModel.serialize_dt
+    updated_at: Optional[datetime] = None
+    # ⚠️ created_at and updated_at are Optional[datetime] here to match the domain entity's
+    # representation and allow flexibility in tests. In production, these should
+    # be populated with datetime.now(timezone.utc) before persisting.
 
     @classmethod
     def from_entity(cls, r) -> "ReplacementRuleResponse":
