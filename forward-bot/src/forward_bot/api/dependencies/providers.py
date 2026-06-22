@@ -9,6 +9,8 @@ from forward_bot.infrastructure.mongo.repositories.folder_repository import Fold
 from forward_bot.infrastructure.mongo.repositories.rule_repository import ForwardingRuleRepository
 from forward_bot.infrastructure.mongo.repositories.replacement_repository import ReplacementRuleRepository
 from forward_bot.infrastructure.mongo.repositories.sampling_repository import SamplingRepository
+from forward_bot.infrastructure.mongo.repositories.mapping_repository import MappingRepository
+from forward_bot.application.pipeline.engine import PipelineEngine
 
 
 def get_db() -> AsyncIOMotorDatabase:
@@ -41,6 +43,22 @@ def get_replacement_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> Re
 def get_sampling_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> SamplingRepository:
     """Injects the SamplingRepository."""
     return SamplingRepository(db)
+
+
+def get_mapping_repository(db: AsyncIOMotorDatabase = Depends(get_db)) -> MappingRepository:
+    """Injects the MappingRepository."""
+    return MappingRepository(db)
+
+
+def get_pipeline_engine(
+    mapping_repo: MappingRepository = Depends(get_mapping_repository),
+    sampling_repo: SamplingRepository = Depends(get_sampling_repository),
+) -> PipelineEngine:
+    """Injects the PipelineEngine."""
+    return PipelineEngine(
+        mapping_repository=mapping_repo,
+        sampling_repository=sampling_repo,
+    )
 
 
 def get_telegram_client() -> TelegramClientHolder:

@@ -126,3 +126,79 @@ async def test_engine_default_steps_execution(mock_context) -> None:
     assert result.metadata["destination_channel_id"] == 99999
     # Check that PersistMappingStep called mock_repo.add_mapping
     mock_repo.add_mapping.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_engine_steps_6_to_16_integration() -> None:
+    from datetime import datetime
+    from forward_bot.domain.entities.forwarding_rule import AutoReplaceSourceRefsConfig, AttributionConfig
+    from forward_bot.domain.entities.replacement_rule import ReplacementRule
+    from forward_bot.infrastructure.cache.rule_cache import RuleCache, CacheHolder
+
+    rule = ForwardingRule(
+        source_id="65c52c6f1f2e3d4a5b6c7d81",
+        destination_channel="dest_chan",
+        remove_links=True,
+        remove_hashtags=True,
+        remove_mentions=True,
+        forward_media="caption_only",
+        auto_replace_source_refs=AutoReplaceSourceRefsConfig(
+            enabled=True,
+            replace_display_name=True
+        ),
+        attribution=AttributionConfig(
+            enabled=True,
+            position="suffix",
+            format="From {source_name}"
+        )
+    )
+    rule.id = "rule_1"
+
+    source = MagicMock(spec=Source)
+    source.telegram_id = 12345
+    source.telegram_username = "src_user"
+    source.display_name = "MySource"
+
+    rr = ReplacementRule(
+        forwarding_rule_id="rule_1",
+        search_text="awesome",
+        replacement_text="incredible",
+        match_mode="literal",
+        is_active=True,
+        id="rr1",
+        created_at=datetime(2026, 6, 1, 12, 0)
+    )
+
+    CacheHolder.current = RuleCache(
+        replacements={"rule_1": [rr]},
+        compiled_patterns={}
+    )
+
+    mock_mapping_repo = MagicMock()
+    mock_mapping_repo.get_by_source_message = AsyncMock(return_value=None)
+    mock_mapping_repo.add_mapping = AsyncMock()
+
+    engine = PipelineEngine(mapping_repository=mock_mapping_repo)
+
+    media = MagicMock()
+    media.type_name = "photo"
+
+    ctx = PipelineContext(
+        text="",
+        caption="Visit http://t.me/src_user. #hash @mention. This is awesome by MySource.",
+        media=media,
+        attribution_decided=False,
+        reply_target_destination_id=None,
+        correlation_id="xyz12345",
+        rule=rule,
+        source=source,
+        metadata={"source_message_id": 123456}
+    )
+
+    result = await engine.execute(ctx)
+    assert isinstance(result, PipelineContext)
+    assert "incredible" in result.text
+    assert "dest_chan" in result.text
+    assert "From MySource" in result.text
+    assert result.media is None
+    assert result.caption is None

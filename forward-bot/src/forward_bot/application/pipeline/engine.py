@@ -51,7 +51,7 @@ class PipelineEngine:
                 BlockKeywordStep(),
                 AllowKeywordStep(),
                 MediaDecisionStep(),
-                ReplyLookupStep(),
+                ReplyLookupStep(mapping_repository),
                 SourceRefReplaceStep(),
                 TextReplacementStep(),
                 LinkRemovalStep(),

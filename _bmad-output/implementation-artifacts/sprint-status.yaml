@@ -1,4 +1,4 @@
-# Sprint Status Tracking for Forward Bot
+﻿# Sprint Status Tracking for Forward Bot
 # =======================================
 # Generated: 2026-06-02
 # Last Updated: 2026-06-20
@@ -9,19 +9,19 @@
 
 # STATUS DEFINITIONS:
 # ===================
-# Epic Status Flow: backlog → in-progress → done
+# Epic Status Flow: backlog â†’ in-progress â†’ done
 #   backlog: Epic not yet started
 #   in-progress: Epic actively being worked on (stories being created/implemented)
 #   done: All stories in epic completed
 #
-# Story Status Flow: backlog → ready-for-dev → in-progress → review → done
+# Story Status Flow: backlog â†’ ready-for-dev â†’ in-progress â†’ review â†’ done
 #   backlog: Story only exists in epic file (no story file created yet)
 #   ready-for-dev: Story file created (e.g., stories/1-1-initialize-project-scaffold.md)
 #   in-progress: Developer actively working on implementation
 #   review: Ready for code review (via Dev's code-review workflow)
 #   done: Story completed and merged
 #
-# Retrospective Status: optional ↔ done
+# Retrospective Status: optional â†” done
 #   optional: Can be completed but not required
 #   done: Retrospective has been completed
 #
@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-06-02"
-last_updated: "2026-06-21"
+last_updated: 2026-06-21T21:41:43+05:30
 work_started: "2026-06-02"
 work_completed: "2026-06-09"
 first_story_created: "2026-06-02"
@@ -79,7 +79,7 @@ development_status:
 
   4-1-pipeline-infrastructure-context-protocol-engine-message-mapping: done
   4-2-filter-pipeline-steps-steps-1-5: done
-  4-3-transform-media-pipeline-steps-steps-6-16: backlog
+  4-3-transform-media-pipeline-steps-steps-6-16: done
   4-4-telegram-delivery-reliability: backlog
   4-5-telegram-worker-end-to-end-message-forwarding: backlog
 
@@ -117,11 +117,11 @@ summary:
   epics_in_progress: 1
   epics_done: 3
 
-  stories_backlog: 13
+  stories_backlog: 12
   stories_ready_for_dev: 0
   stories_in_progress: 0
   stories_in_review: 0
-  stories_done: 11
+  stories_done: 12
 
   retrospectives_optional: 3
   retrospectives_done: 3
@@ -130,26 +130,26 @@ summary:
 # ==============================
 # Sequential epic flow (each epic depends on prior ones):
 #
-# Epic 1 (Foundation) →
+# Epic 1 (Foundation) â†’
 #   - 1.1 Project Scaffold (establishes directory structure)
 #   - 1.2 Settings & MongoDB (establishes config + data layer)
 #   - 1.3 FastAPI Shell (establishes app skeleton + health)
 #   - 1.4 Telegram Auth (establishes Telegram connectivity)
 #   - Retrospective
 #
-# Epic 2 (Sources) [depends on E1] →
+# Epic 2 (Sources) [depends on E1] â†’
 #   - 2.1 Source Registration (establishes Source entity + API)
 #   - 2.2 Source List/Update (extends Source API)
 #   - 2.3 Folder CRUD (establishes Folder entity + API)
 #   - Retrospective
 #
-# Epic 3 (Rules) [depends on E1, E2] →
+# Epic 3 (Rules) [depends on E1, E2] â†’
 #   - 3.1 Rule CRUD (establishes Rule entity + validation)
 #   - 3.2 Replacement CRUD (extends Rule entity)
 #   - 3.3 Cache (CRITICAL: builds RuleCache used by E4)
 #   - Retrospective
 #
-# Epic 4 (Forwarding Engine) [depends on E1-E3] →
+# Epic 4 (Forwarding Engine) [depends on E1-E3] â†’
 #   - 4.1 Pipeline Infrastructure (establishes PipelineContext + protocol)
 #   - 4.2 Filter Steps 1-5 (time-window, sampling, media-type, block, allow)
 #   - 4.3 Transform Steps 6-16 (media decision, reply, ref-replace, replacements, link/mention/hashtag removal, media-replace, whitespace, attribution, empty-check)
@@ -157,13 +157,13 @@ summary:
 #   - 4.5 Worker (Telegram worker subscription + per-rule dispatch)
 #   - Retrospective
 #
-# Epic 5 (Observability) [depends on E1, E4] →
+# Epic 5 (Observability) [depends on E1, E4] â†’
 #   - 5.1 Edit/Delete/Reply (establish mapping sweeper + sync)
 #   - 5.2 Structlog + Ring Buffer (establish logging infrastructure)
 #   - 5.3 SSE + Stats API (establish backend APIs for UI)
 #   - Retrospective
 #
-# Epic 6 (UI) [depends on E1-E5] →
+# Epic 6 (UI) [depends on E1-E5] â†’
 #   - 6.1 React Foundation (establish base app, auth, layout)
 #   - 6.2 Component Library (establish shared UI patterns)
 #   - 6.3 Dashboard + Settings (S1, S8)
@@ -189,3 +189,4 @@ summary:
 # PAIR-PROGRAMMING RECOMMENDED:
 #   - Epic 3 Story 3.3 (cache design, non-blocking refresh, atomic snapshots)
 #   - Epic 4 Stories 4.1-4.2 (pipeline infrastructure + filter logic; defines protocol for all future steps)
+
