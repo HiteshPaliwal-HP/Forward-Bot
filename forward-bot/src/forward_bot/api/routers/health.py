@@ -32,10 +32,13 @@ async def readiness_check(response: Response) -> dict[str, str]:
         return {"mongodb": "down"}
 
 
-@router.get("/telegram", status_code=status.HTTP_200_OK)
-async def telegram_status() -> dict[str, Any]:
+@router.get("/telegram")
+async def telegram_status(response: Response) -> dict[str, Any]:
     """Telegram connection status."""
+    status_str = telegram_client.status
+    if status_str != "connected":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
-        "telegram": telegram_client.status,
+        "telegram": status_str,
         "last_event": telegram_client.last_event
     }

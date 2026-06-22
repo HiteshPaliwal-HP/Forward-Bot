@@ -27,6 +27,12 @@ class TelegramClientHolder:
     async def connect(self, settings: Settings) -> None:
         """Initialize and connect the Telegram client if a valid session exists."""
         async with self._lock:
+            if self.status == "connected":
+                logger.info(
+                    "telegram_client_already_connected",
+                    message="Telegram client is already connected. Skipping connect."
+                )
+                return
             self.settings = settings
             session_path = Path(settings.telegram_session_path).resolve()
 

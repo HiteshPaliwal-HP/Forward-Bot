@@ -37,7 +37,7 @@ async def test_telegram_health_endpoint(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/health/telegram")
         
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.json() == {"telegram": "disconnected", "last_event": None}
 
 

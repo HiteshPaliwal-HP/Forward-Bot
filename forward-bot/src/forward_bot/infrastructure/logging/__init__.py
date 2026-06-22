@@ -11,9 +11,19 @@ class SecretRedactor:
     def __init__(self, api_key: str | None = None, secret_key: str | None = None) -> None:
         self.secrets = []
         if api_key and api_key != "your-api-key-here" and api_key.strip():
-            self.secrets.append(api_key.strip())
+            stripped_api = api_key.strip()
+            if len(stripped_api) >= 6:
+                self.secrets.append(stripped_api)
+            else:
+                import sys
+                print("WARNING: API_KEY is too short (less than 6 characters). Skipping redaction to avoid over-scrubbing.", file=sys.stderr)
         if secret_key and secret_key != "your-secret-key-here" and secret_key.strip():
-            self.secrets.append(secret_key.strip())
+            stripped_secret = secret_key.strip()
+            if len(stripped_secret) >= 6:
+                self.secrets.append(stripped_secret)
+            else:
+                import sys
+                print("WARNING: SECRET_KEY is too short (less than 6 characters). Skipping redaction to avoid over-scrubbing.", file=sys.stderr)
 
     def __call__(self, logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
         return self.redact(event_dict)

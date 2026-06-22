@@ -333,7 +333,7 @@ class TestHealthEndpoints:
     async def test_telegram_stub_disconnected(self, app_no_lifespan):
         async with AsyncClient(transport=ASGITransport(app=app_no_lifespan), base_url="http://test") as ac:
             response = await ac.get("/health/telegram")
-        assert response.status_code == 200
+        assert response.status_code == 503
         body = response.json()
         assert body["telegram"] == "disconnected"
         assert body["last_event"] is None
@@ -832,5 +832,5 @@ class TestTelegramHealthEndpoint:
         async with AsyncClient(transport=ASGITransport(app=app_no_lifespan), base_url="http://test") as ac:
             response = await ac.get("/health/telegram")
 
-        assert response.status_code == 200
+        assert response.status_code == 503
         assert response.json()["telegram"] == "reconnecting"
