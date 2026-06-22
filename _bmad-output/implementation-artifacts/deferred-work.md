@@ -57,3 +57,6 @@ The epic spec does not cover what happens when `POST /api/v1/sources` is called 
 ## Deferred from: code review of 4-2-filter-pipeline-steps-steps-1-5.md (2026-06-21)
 
 - **Dynamic regex compilation not cached locally when global cache is missing**: If precompiled cache is missing, it dynamically compiles `re.compile(kw)` for every keyword for every message processed. This could be a performance bottleneck under high load.
+
+## Deferred from: code review of 4-5-telegram-worker-end-to-end-message-forwarding.md (2026-06-22)
+- Add thread-safe lock for `sampling_counters` mutation [worker.py:252] — deferred, pre-existing

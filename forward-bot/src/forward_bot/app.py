@@ -85,7 +85,7 @@ async def default_lifespan(app: FastAPI):
     # Start background task stubs
     cache_task = asyncio.create_task(run_cache_refresher(settings, mongo_client.db))
     sweeper_task = asyncio.create_task(run_mapping_sweeper())
-    worker_task = asyncio.create_task(run_telegram_worker())
+    worker_task = asyncio.create_task(run_telegram_worker(settings, mongo_client.db))
 
     try:
         yield

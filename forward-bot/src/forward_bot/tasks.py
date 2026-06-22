@@ -38,11 +38,18 @@ async def run_mapping_sweeper() -> None:
         logger.info("mapping_sweeper_stopped")
         raise
 
-async def run_telegram_worker() -> None:
-    """Stub for telegram worker task."""
-    logger.info("telegram_worker_started", status="stub")
-    try:
-        await asyncio.sleep(float('inf'))
-    except asyncio.CancelledError:
-        logger.info("telegram_worker_stopped")
-        raise
+async def run_telegram_worker(settings=None, db=None) -> None:
+    """Real telegram worker task runner."""
+    if settings is None or db is None:
+        # Stub mode: sleep until cancelled (preserves cancellation semantics)
+        logger.info("telegram_worker_started", status="stub-no-settings")
+        try:
+            await asyncio.sleep(float('inf'))
+        except asyncio.CancelledError:
+            logger.info("telegram_worker_stopped")
+            raise
+        return
+
+    from forward_bot.infrastructure.telegram.worker import TelegramWorker
+    worker = TelegramWorker(settings, db)
+    await worker.run()
