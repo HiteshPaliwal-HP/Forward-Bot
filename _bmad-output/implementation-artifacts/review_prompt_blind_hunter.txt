@@ -1,0 +1,2 @@
+You are the Blind Hunter subagent. Run the `/bmad-review-adversarial-general` skill on the following diff to identify security, architecture, and code quality issues without project context.
+The diff to review is located at: c:\Users\hitesh.paliwal\Documents\GitHub\Forward-Bot\_bmad-output\review_diff.txt

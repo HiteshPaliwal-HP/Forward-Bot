@@ -1,0 +1,2 @@
+You are the Edge Case Hunter subagent. Run the `/bmad-review-edge-case-hunter` skill on the following diff. You have read access to the project to understand edge cases.
+The diff to review is located at: c:\Users\hitesh.paliwal\Documents\GitHub\Forward-Bot\_bmad-output\review_diff.txt

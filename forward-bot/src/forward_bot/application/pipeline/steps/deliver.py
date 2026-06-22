@@ -1,11 +1,20 @@
-"""Deliver pipeline step stub."""
+"""Deliver pipeline step implementation."""
 from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
+from forward_bot.config import get_settings
+from forward_bot.infrastructure.telegram import telegram_client
+from forward_bot.infrastructure.telegram.delivery import deliver_message
 
 
 class DeliverStep:
     name: str = "DeliverStep"
 
     async def apply(self, ctx: PipelineContext) -> PipelineContext | BlockedOutcome:
-        ctx.metadata["destination_message_id"] = 99999
-        ctx.metadata["destination_channel_id"] = 99999
+        settings = get_settings()
+        msg_id, chat_id = await deliver_message(
+            telegram_client.client,
+            ctx,
+            settings
+        )
+        ctx.metadata["destination_message_id"] = msg_id
+        ctx.metadata["destination_channel_id"] = chat_id
         return ctx

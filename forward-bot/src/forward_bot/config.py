@@ -90,6 +90,20 @@ class Settings(BaseSettings):
         description="Number of days to retain message mappings",
     )
 
+    # Delivery reliability settings
+    delivery_max_retries: int = Field(
+        default=3,
+        description="Maximum number of retries for transient delivery errors",
+    )
+    delivery_backoff_factor: float = Field(
+        default=2.0,
+        description="Exponential backoff multiplier for delivery retries",
+    )
+    delivery_base_delay: float = Field(
+        default=1.0,
+        description="Initial delay in seconds for delivery retries",
+    )
+
     @field_validator("timezone_default")
     @classmethod
     def validate_timezone(cls, v: str) -> str:
@@ -123,3 +137,11 @@ class Settings(BaseSettings):
             return Path(self.media_replacement_base_dir).expanduser()
         except Exception:
             return Path(self.media_replacement_base_dir)
+
+
+from functools import lru_cache
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Retrieve the cached application settings instance."""
+    return Settings()

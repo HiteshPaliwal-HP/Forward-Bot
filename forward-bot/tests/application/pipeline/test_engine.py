@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
 from forward_bot.domain.entities.forwarding_rule import ForwardingRule
 from forward_bot.domain.entities.source import Source
@@ -118,8 +118,17 @@ async def test_engine_default_steps_execution(mock_context) -> None:
 
     engine = PipelineEngine(mapping_repository=mock_repo)
     mock_context.metadata["source_message_id"] = 123456
+    mock_context.rule.destination_channel = "dest_chan"
 
-    result = await engine.execute(mock_context)
+    from forward_bot.infrastructure.telegram import telegram_client
+    mock_client = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.id = 99999
+    mock_msg.chat_id = 99999
+    mock_client.send_message = AsyncMock(return_value=mock_msg)
+
+    with patch.object(telegram_client, "client", mock_client):
+        result = await engine.execute(mock_context)
     assert isinstance(result, PipelineContext)
     # Check that DeliverStep simulated delivery
     assert result.metadata["destination_message_id"] == 99999
@@ -195,7 +204,15 @@ async def test_engine_steps_6_to_16_integration() -> None:
         metadata={"source_message_id": 123456}
     )
 
-    result = await engine.execute(ctx)
+    from forward_bot.infrastructure.telegram import telegram_client
+    mock_client = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.id = 99999
+    mock_msg.chat_id = 99999
+    mock_client.send_message = AsyncMock(return_value=mock_msg)
+
+    with patch.object(telegram_client, "client", mock_client):
+        result = await engine.execute(ctx)
     assert isinstance(result, PipelineContext)
     assert "incredible" in result.text
     assert "dest_chan" in result.text

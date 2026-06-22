@@ -57,6 +57,9 @@ def test_settings_defaults(monkeypatch):
     assert settings.hot_reload_interval == 30
     assert settings.bind_host == "127.0.0.1"
     assert settings.timezone_default == "UTC"
+    assert settings.delivery_max_retries == 3
+    assert settings.delivery_backoff_factor == 2.0
+    assert settings.delivery_base_delay == 1.0
 
 
 def test_settings_case_insensitivity(monkeypatch):
