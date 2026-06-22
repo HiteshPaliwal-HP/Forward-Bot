@@ -29,14 +29,10 @@ async def run_cache_refresher(settings=None, db=None) -> None:
     await _run(settings, db)
 
 
-async def run_mapping_sweeper() -> None:
-    """Stub for mapping sweeper task."""
-    logger.info("mapping_sweeper_started", status="stub")
-    try:
-        await asyncio.sleep(float('inf'))
-    except asyncio.CancelledError:
-        logger.info("mapping_sweeper_stopped")
-        raise
+async def run_mapping_sweeper(settings=None, db=None) -> None:
+    """Real mapping sweeper task runner."""
+    from forward_bot.infrastructure.mongo.mapping_sweeper import run_mapping_sweeper as _run
+    await _run(settings, db)
 
 async def run_telegram_worker(settings=None, db=None) -> None:
     """Real telegram worker task runner."""

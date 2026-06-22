@@ -49,8 +49,8 @@ async def test_worker_startup_and_shutdown(mock_settings, mock_db) -> None:
             await worker.run()
 
         # Assert handler registration and removal
-        mock_client.on.assert_called_once()
-        mock_client.remove_event_handler.assert_called_once()
+        assert mock_client.on.call_count == 3
+        assert mock_client.remove_event_handler.call_count == 3
 
 
 @pytest.mark.asyncio

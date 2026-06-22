@@ -11,6 +11,7 @@ from telethon.tl.functions.messages import ImportChatInviteRequest
 from forward_bot.infrastructure.logging import logger
 from forward_bot.infrastructure.cache.rule_cache import CacheHolder
 from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
+from forward_bot.domain.entities.message_mapping import MessageMapping
 from forward_bot.infrastructure.mongo.repositories.mapping_repository import MappingRepository
 from forward_bot.infrastructure.mongo.repositories.sampling_repository import SamplingRepository
 from forward_bot.application.pipeline.engine import PipelineEngine
@@ -48,7 +49,17 @@ class TelegramWorker:
         async def handle_new_message(event: events.NewMessage.Event) -> None:
             await self.process_event(event)
 
+        @client.on(events.MessageEdited)
+        async def handle_message_edited(event: events.MessageEdited.Event) -> None:
+            await self.process_edit_event(event)
+
+        @client.on(events.MessageDeleted)
+        async def handle_message_deleted(event: events.MessageDeleted.Event) -> None:
+            await self.process_delete_event(event)
+
         self._handler = handle_new_message
+        self._edit_handler = handle_message_edited
+        self._delete_handler = handle_message_deleted
 
         # Start subscription/reload checking task
         reload_task = asyncio.create_task(self.reload_loop())
@@ -60,9 +71,11 @@ class TelegramWorker:
             logger.info("telegram_worker_stopped")
             reload_task.cancel()
             await asyncio.gather(reload_task, return_exceptions=True)
-            # Unregister event handler if client is still alive
+            # Unregister event handlers if client is still alive
             if telegram_client.client:
                 telegram_client.client.remove_event_handler(self._handler, events.NewMessage)
+                telegram_client.client.remove_event_handler(self._edit_handler, events.MessageEdited)
+                telegram_client.client.remove_event_handler(self._delete_handler, events.MessageDeleted)
             raise
 
     async def reload_loop(self) -> None:
@@ -286,6 +299,195 @@ class TelegramWorker:
                 "worker_dispatch_failed",
                 error=str(e),
                 correlation_id=correlation_id,
+            )
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+    async def process_edit_event(self, event: events.MessageEdited.Event) -> None:
+        """Processes an incoming message edit event and propagates it to all mapped destinations."""
+        if not event.message:
+            return
+
+        # Extract source channel ID
+        event_tg_id = None
+        peer = event.message.peer_id
+        if peer:
+            if isinstance(peer, PeerChannel):
+                event_tg_id = peer.channel_id
+            elif isinstance(peer, PeerChat):
+                event_tg_id = peer.chat_id
+            elif isinstance(peer, PeerUser):
+                event_tg_id = peer.user_id
+
+        if event_tg_id is None and event.chat_id is not None:
+            event_tg_id = event.chat_id
+
+        if event_tg_id is None:
+            return
+
+        # Find mappings for this source channel and source message ID
+        mappings = await self.mapping_repo.get_by_source(
+            source_channel_id=event_tg_id,
+            source_message_id=event.message.id
+        )
+        if not mappings:
+            # Silently ignore if no mappings exist
+            return
+
+        correlation_id = uuid.uuid4().hex[:8]
+
+        # For each mapping, run propagation using contextvars copy_context to isolate correlation_id
+        tasks = []
+        for mapping in mappings:
+            ctx = contextvars.copy_context()
+            tasks.append(
+                asyncio.create_task(
+                    ctx.run(self.propagate_edit_for_mapping, mapping, event, correlation_id)
+                )
+            )
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def propagate_edit_for_mapping(
+        self,
+        mapping: MessageMapping,
+        event: events.MessageEdited.Event,
+        correlation_id: str
+    ) -> None:
+        """Propagates edit to a single mapped destination in isolated contextvars context."""
+        structlog.contextvars.bind_contextvars(
+            correlation_id=correlation_id,
+            source_id=mapping.source_channel_id,
+            message_id=mapping.source_message_id,
+        )
+        try:
+            from forward_bot.infrastructure.telegram.delivery import propagate_edit
+            from forward_bot.infrastructure.telegram import telegram_client
+
+            # Parse text/caption/media according to Telethon convention
+            media = event.message.media
+            if media is not None:
+                text = ""
+                caption = event.message.message or ""
+            else:
+                text = event.message.message or ""
+                caption = None
+
+            await propagate_edit(
+                client=telegram_client.client,
+                destination_channel_id=mapping.destination_channel_id,
+                destination_message_id=mapping.destination_message_id,
+                text=text,
+                caption=caption,
+                media=media,
+                rule_id=mapping.forwarding_rule_id,
+                correlation_id=correlation_id,
+                settings=self.settings
+            )
+
+            # Log edit_propagated at INFO
+            structlog.get_logger().info(
+                "edit_propagated",
+                rule_id=mapping.forwarding_rule_id,
+                source_message_id=mapping.source_message_id,
+                destination_message_id=mapping.destination_message_id,
+                correlation_id=correlation_id,
+            )
+        except Exception as e:
+            # Permanent failures log warning and do not crash the worker
+            structlog.get_logger().warning(
+                "edit_propagation_failed",
+                rule_id=mapping.forwarding_rule_id,
+                source_message_id=mapping.source_message_id,
+                destination_message_id=mapping.destination_message_id,
+                correlation_id=correlation_id,
+                error=str(e),
+                message="Edit propagation failed"
+            )
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+    async def process_delete_event(self, event: events.MessageDeleted.Event) -> None:
+        """Processes an incoming message deletion event and propagates it to all mapped destinations."""
+        # Extract source channel ID
+        event_tg_id = None
+        if event.chat_id is not None:
+            event_tg_id = event.chat_id
+
+        if event_tg_id is None or not event.deleted_ids:
+            return
+
+        # Find mappings for this source channel and list of deleted source message IDs
+        mappings = await self.mapping_repo.get_by_source_messages(
+            source_channel_id=event_tg_id,
+            source_message_ids=event.deleted_ids
+        )
+        if not mappings:
+            # Silently ignore if no mappings exist
+            return
+
+        correlation_id = uuid.uuid4().hex[:8]
+
+        # Group mappings by destination channel to batch deletes
+        from collections import defaultdict
+        grouped_mappings = defaultdict(list)
+        for m in mappings:
+            grouped_mappings[m.destination_channel_id].append(m)
+
+        # For each destination channel, dispatch the batched deletion
+        tasks = []
+        for dest_channel_id, channel_mappings in grouped_mappings.items():
+            ctx = contextvars.copy_context()
+            tasks.append(
+                asyncio.create_task(
+                    ctx.run(self.propagate_delete_for_channel, dest_channel_id, channel_mappings, correlation_id)
+                )
+            )
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def propagate_delete_for_channel(
+        self,
+        dest_channel_id: int,
+        channel_mappings: list[MessageMapping],
+        correlation_id: str
+    ) -> None:
+        """Propagates deletions to a single destination channel in a batch."""
+        structlog.contextvars.bind_contextvars(
+            correlation_id=correlation_id,
+        )
+        try:
+            from forward_bot.infrastructure.telegram.delivery import propagate_delete
+            from forward_bot.infrastructure.telegram import telegram_client
+
+            dest_message_ids = [m.destination_message_id for m in channel_mappings]
+            rule_ids = list({m.forwarding_rule_id for m in channel_mappings})
+
+            await propagate_delete(
+                client=telegram_client.client,
+                destination_channel_id=dest_channel_id,
+                destination_message_ids=dest_message_ids,
+                settings=self.settings,
+                rule_ids=rule_ids,
+                correlation_id=correlation_id
+            )
+
+            # Log delete_propagated at INFO for each mapping successfully deleted
+            for m in channel_mappings:
+                structlog.get_logger().info(
+                    "delete_propagated",
+                    rule_id=m.forwarding_rule_id,
+                    source_message_id=m.source_message_id,
+                    destination_message_id=m.destination_message_id,
+                    correlation_id=correlation_id,
+                )
+        except Exception as e:
+            # Permanent failures log warning and do not crash the worker
+            structlog.get_logger().warning(
+                "delete_propagation_failed",
+                correlation_id=correlation_id,
+                error=str(e),
+                message=f"Delete propagation failed for destination channel {dest_channel_id}"
             )
         finally:
             structlog.contextvars.clear_contextvars()

@@ -931,5 +931,5 @@ async def test_epic4_worker_shutdown_and_reload(base_settings, mock_db, mock_tel
         await worker_task
 
     # Verify event handler registered then cleaned up
-    mock_telegram.client.on.assert_called_once()
-    mock_telegram.client.remove_event_handler.assert_called_once()
+    assert mock_telegram.client.on.call_count == 3
+    assert mock_telegram.client.remove_event_handler.call_count == 3

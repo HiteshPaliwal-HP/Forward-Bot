@@ -1,10 +1,10 @@
 """Telegram delivery implementation with reliability and retries."""
 import asyncio
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Any, List
 
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError, RPCError
+from telethon.errors import FloodWaitError, RPCError, MessageNotModifiedError
 
 from forward_bot.config import Settings
 from forward_bot.domain.entities.pipeline_context import PipelineContext
@@ -107,3 +107,182 @@ async def deliver_message(
                 message=f"Transient Telegram error encountered. Retrying in {delay}s..."
             )
             await asyncio.sleep(delay)
+
+
+async def propagate_edit(
+    client: TelegramClient,
+    destination_channel_id: int,
+    destination_message_id: int,
+    text: str,
+    caption: str | None,
+    media: Any | None,
+    rule_id: str,
+    correlation_id: str,
+    settings: Settings
+) -> None:
+    """Propagates a message edit to a specific destination message with transient error retries."""
+    if client is None:
+        raise ValueError("Telegram client is not initialized")
+
+    # Determine updated content
+    message_text = caption if media is not None else text
+
+    attempt = 0
+    flood_wait_retries = 0
+    while True:
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(
+                    client.edit_message(
+                        entity=destination_channel_id,
+                        message=destination_message_id,
+                        text=message_text
+                    )
+                ),
+                timeout=5.0
+            )
+            return
+        except MessageNotModifiedError:
+            # Caught and treated as a success (no-op)
+            logger.info(
+                "edit_propagation_ignored",
+                rule_id=rule_id,
+                correlation_id=correlation_id,
+                message="Message not modified on Telegram, ignoring"
+            )
+            return
+        except FloodWaitError as e:
+            logger.warning(
+                "flood_wait",
+                wait_seconds=e.seconds,
+                rule_id=rule_id,
+                correlation_id=correlation_id,
+                message=f"Telegram flood wait triggered during edit propagation. Must wait {e.seconds} seconds."
+            )
+            if e.seconds > 300:
+                logger.error(
+                    "edit_propagation_failed",
+                    rule_id=rule_id,
+                    correlation_id=correlation_id,
+                    error=f"FloodWait too long: {e.seconds}s (max 300s)",
+                    message="Flood wait duration exceeds threshold. Aborting edit propagation."
+                )
+                raise e
+            flood_wait_retries += 1
+            if flood_wait_retries > 3:
+                logger.error(
+                    "edit_propagation_failed",
+                    rule_id=rule_id,
+                    correlation_id=correlation_id,
+                    error="Max FloodWait retries exceeded",
+                    message="Exceeded max flood wait retries. Aborting edit propagation."
+                )
+                raise e
+            await asyncio.sleep(e.seconds)
+            continue
+        except (ConnectionError, asyncio.TimeoutError, RPCError) as e:
+            attempt += 1
+            if attempt > settings.delivery_max_retries:
+                logger.error(
+                    "edit_propagation_failed",
+                    rule_id=rule_id,
+                    correlation_id=correlation_id,
+                    error=str(e),
+                    message=f"Edit propagation failed after {attempt - 1} retries due to transient error."
+                )
+                raise e
+            delay = settings.delivery_base_delay * (settings.delivery_backoff_factor ** (attempt - 1))
+            logger.warning(
+                "edit_propagation_transient_error",
+                attempt=attempt,
+                rule_id=rule_id,
+                correlation_id=correlation_id,
+                error=str(e),
+                backoff_delay=delay,
+                message=f"Transient Telegram error during edit propagation. Retrying in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+
+
+async def propagate_delete(
+    client: TelegramClient,
+    destination_channel_id: int,
+    destination_message_ids: List[int],
+    settings: Settings,
+    rule_ids: List[str],
+    correlation_id: str
+) -> None:
+    """Propagates message deletions to a specific destination channel in a batch with retry handling."""
+    if client is None:
+        raise ValueError("Telegram client is not initialized")
+    if not destination_message_ids:
+        return
+
+    attempt = 0
+    flood_wait_retries = 0
+    while True:
+        try:
+            for i in range(0, len(destination_message_ids), 100):
+                chunk = destination_message_ids[i:i + 100]
+                await asyncio.wait_for(
+                    asyncio.shield(
+                        client.delete_messages(
+                            entity=destination_channel_id,
+                            message_ids=chunk
+                        )
+                    ),
+                    timeout=5.0
+                )
+            return
+        except FloodWaitError as e:
+            logger.warning(
+                "flood_wait",
+                wait_seconds=e.seconds,
+                rule_ids=rule_ids,
+                correlation_id=correlation_id,
+                message=f"Telegram flood wait triggered during delete propagation. Must wait {e.seconds} seconds."
+            )
+            if e.seconds > 300:
+                logger.error(
+                    "delete_propagation_failed",
+                    rule_ids=rule_ids,
+                    correlation_id=correlation_id,
+                    error=f"FloodWait too long: {e.seconds}s (max 300s)",
+                    message="Flood wait duration exceeds threshold. Aborting delete propagation."
+                )
+                raise e
+            flood_wait_retries += 1
+            if flood_wait_retries > 3:
+                logger.error(
+                    "delete_propagation_failed",
+                    rule_ids=rule_ids,
+                    correlation_id=correlation_id,
+                    error="Max FloodWait retries exceeded",
+                    message="Exceeded max flood wait retries. Aborting delete propagation."
+                )
+                raise e
+            await asyncio.sleep(e.seconds)
+            continue
+        except (ConnectionError, asyncio.TimeoutError, RPCError) as e:
+            attempt += 1
+            if attempt > settings.delivery_max_retries:
+                logger.error(
+                    "delete_propagation_failed",
+                    rule_ids=rule_ids,
+                    correlation_id=correlation_id,
+                    error=str(e),
+                    message=f"Delete propagation failed after {attempt - 1} retries due to transient error."
+                )
+                raise e
+            delay = settings.delivery_base_delay * (settings.delivery_backoff_factor ** (attempt - 1))
+            logger.warning(
+                "delete_propagation_transient_error",
+                attempt=attempt,
+                rule_ids=rule_ids,
+                correlation_id=correlation_id,
+                error=str(e),
+                backoff_delay=delay,
+                message=f"Transient Telegram error during delete propagation. Retrying in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+

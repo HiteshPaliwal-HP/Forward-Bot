@@ -62,3 +62,43 @@ class MappingRepository(BaseRepository):
             "forwarding_rule_id": ObjectId(forwarding_rule_id)
         })
         return self._to_entity(doc) if doc else None
+
+    async def get_by_source(
+        self,
+        source_channel_id: int,
+        source_message_id: int
+    ) -> list[MessageMapping]:
+        """Look up all mappings for a source message."""
+        cursor = self.collection.find({
+            "source_channel_id": source_channel_id,
+            "source_message_id": source_message_id
+        })
+        docs = await cursor.to_list(length=None)
+        return [self._to_entity(doc) for doc in docs]
+
+    async def get_by_source_messages(
+        self,
+        source_channel_id: int,
+        source_message_ids: list[int]
+    ) -> list[MessageMapping]:
+        """Look up mappings for a list of source message IDs."""
+        cursor = self.collection.find({
+            "source_channel_id": source_channel_id,
+            "source_message_id": {"$in": source_message_ids}
+        })
+        docs = await cursor.to_list(length=None)
+        return [self._to_entity(doc) for doc in docs]
+
+    async def delete_expired_mappings(self, retention_days: int) -> int:
+        """Delete all expired mappings older than retention_days.
+
+        Returns:
+            The number of deleted mappings.
+        """
+        from datetime import datetime, timezone, timedelta
+        threshold = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        result = await self.collection.delete_many({
+            "forwarded_at": {"$lt": threshold}
+        })
+        return result.deleted_count
+
