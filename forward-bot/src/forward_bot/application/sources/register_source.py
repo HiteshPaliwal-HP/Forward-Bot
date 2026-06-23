@@ -47,7 +47,7 @@ class RegisterSource:
             entity = await self.tg_client.client.get_entity(entity_ref)
         except Exception as e:
             logger.error(
-                "source_resolve_failed",
+                "telegram_resolve_failed",
                 error=str(e),
                 message=f"Failed to resolve Telegram reference: {telegram_reference}"
             )
@@ -87,12 +87,22 @@ class RegisterSource:
         # Check by telegram_id
         existing = await self.source_repo.get_source_by_telegram_id(entity.id)
         if existing:
+            logger.warning(
+                "source_already_exists",
+                telegram_id=entity.id,
+                message="Source already exists in database (by Telegram ID)"
+            )
             raise SourceAlreadyExistsException(entity.id)
 
         # Check by username if present
         if username:
             existing_by_username = await self.source_repo.get_source_by_username(username)
             if existing_by_username:
+                logger.warning(
+                    "source_already_exists",
+                    telegram_username=username,
+                    message="Source already exists in database (by username)"
+                )
                 raise SourceAlreadyExistsException(entity.id)
 
         # 6. Save to Database

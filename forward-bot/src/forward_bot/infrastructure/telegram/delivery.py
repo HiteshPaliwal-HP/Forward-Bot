@@ -85,6 +85,16 @@ async def deliver_message(
             continue
 
         except (ConnectionError, asyncio.TimeoutError, RPCError) as e:
+            if isinstance(e, RPCError) and "REPLY_MESSAGE_ID_INVALID" in str(e) and ctx.reply_target_destination_id is not None:
+                logger.warning(
+                    "reply_target_missing",
+                    rule_id=str(ctx.rule.id),
+                    correlation_id=ctx.correlation_id,
+                    message="Reply target message has been deleted on destination. Sending standalone."
+                )
+                ctx.reply_target_destination_id = None
+                continue
+
             attempt += 1
             if attempt > settings.delivery_max_retries:
                 logger.error(
