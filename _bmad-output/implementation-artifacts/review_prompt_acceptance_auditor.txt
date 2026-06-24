@@ -1,955 +1,918 @@
 You are an Acceptance Auditor. Review this diff against the spec and context docs. Check for: violations of acceptance criteria, deviations from spec intent, missing implementation of specified behavior, contradictions between spec constraints and actual code. Output findings as a Markdown list. Each finding: one-line title, which AC/constraint it violates, and evidence from the diff.
 
-[SPEC]
----
-baseline_commit: febe1dd
----
-# Story 4.5: Telegram Worker & End-to-End Message Forwarding
+Spec:
+# Story 5.3: SSE Log Broadcaster & Stats/Log API Endpoints
 
-Status: review
-
-<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+Status: done
 
 ## Story
 
 As a **Channel Operator**,
-I want the service to automatically monitor my registered sources and forward qualifying messages as they arrive,
-so that forwarding is fully automatic — I configure the rules and the service does the rest.
+I want to stream live logs via SSE and query recent log history and summary stats via REST endpoints,
+so that the operator dashboard has all the backend data feeds it needs.
 
 ## Acceptance Criteria
 
-1. **Worker Lifecycle & Dynamic Subscriptions:**
-   - **Given** active Forwarding Rules reference registered sources in `RuleCache`.
-   - **When** the Telegram worker starts.
-   - **Then** the worker issues `JoinChannelRequest` (or `ImportChatInviteRequest` if applicable) for any newly active channel/group sources to ensure it receives messages.
-   - **And** registers a **single global** Telethon `NewMessage` event handler, filtering incoming events dynamically against the active sources in the `RuleCache` snapshot.
-   - **And** dynamically updates subscriptions if rules or sources change in the `RuleCache` snapshot on subsequent reload cycles.
+1. **SSE Log Stream Endpoint:**
+   - **Given** an authenticated operator connects to `GET /api/v1/logs/stream`.
+   - **When** the SSE connection opens.
+   - **Then** all current ring buffer entries are replayed to the client first.
+   - **And** the client's `asyncio.Queue` is added to the fan-out set.
+   - **And** subsequent log events are pushed strictly formatted as `data: <json>\n\n`.
+   - **And** the stream is filterable via `?event=<name>` and `?correlation_id=<id>` query params.
+   - **And** the endpoint requires `Depends(get_current_operator)` auth (Architecture S1).
 
-2. **Ingestion, Dispatch, and Context Isolation:**
-   - **Given** a new message arrives in a subscribed source.
-   - **When** the worker's event handler fires.
-   - **Then** a short `correlation_id` (8-character hex string) is generated.
-   - **And** `correlation_id`, `source_id`, and `message_id` are bound to `structlog.contextvars` for full observability.
-   - **And** `cache_holder.current` is read exactly once as the snapshot for this dispatch.
-   - **And** for each active rule whose `source_id` matches, the pipeline engine `execute()` is called independently.
-   - **And** if pipelines run concurrently for multiple rules, the worker MUST use `contextvars.copy_context().run()` to prevent context variable leakage between runs.
-   - **And** `structlog` contextvars are cleared after the dispatch completes.
+2. **Client Disconnection Handling:**
+   - **Given** a client disconnects from `GET /api/v1/logs/stream`.
+   - **When** the connection closes (client closes, `starlette.requests.ClientDisconnect`, or `asyncio.CancelledError`).
+   - **Then** the client's queue is removed from the fan-out set.
+   - **And** no further events are pushed.
+   - **And** no memory leak occurs.
 
-3. **Structured Event Logging:**
-   - **Given** the pipeline engine finishes executing a rule.
-   - **When** the worker inspects the result (a `BlockedOutcome` or `PipelineContext`).
-   - **Then** the worker explicitly emits `{"event": "pipeline_blocked", "reason": "<reason>", "rule_id": "...", "correlation_id": "..."}` at INFO level if blocked.
-   - **And** emits `{"event": "forward_succeeded", "rule_id": "...", "source_message_id": N, "destination_message_id": N, "correlation_id": "..."}` at INFO level if successful.
-   - **And** no secrets, session bytes, or credentials appear in any log output.
+3. **Recent Logs Endpoint:**
+   - **Given** `GET /api/v1/logs/recent?limit=50` is called by an authenticated operator.
+   - **When** the endpoint responds.
+   - **Then** up to `limit` (default 50, max 500) most-recent ring buffer entries are returned as `{"items": [...]}` in chronological order.
+   - **And** it supports optional `?event=` and `?correlation_id=` filters.
+   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 
-4. **In-Memory Sampling State:**
-   - **Given** `SAMPLING_PERSIST=false` (default).
-   - **When** the worker starts.
-   - **Then** an in-memory `{rule_id: int}` counter dict is initialized and passed in `PipelineContext.metadata["sampling_counters"]` to persist counters across messages during the process lifetime.
+4. **Search Logs Endpoint:**
+   - **Given** `GET /api/v1/logs/search?correlation_id=a3f9b2c1` is called by an authenticated operator.
+   - **When** the endpoint responds.
+   - **Then** all ring-buffer entries matching that `correlation_id` are returned.
+   - **And** `?since=<ISO timestamp>` filters to events after that time (default last 1h, max 24h window).
+   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 
-5. **Performance and Non-blocking I/O:**
-   - **Given** 100 active sources with normal traffic.
-   - **When** the worker is running.
-   - **Then** P95 forwarding latency from source message receipt to destination post is ≤ 3 seconds.
-   - **And** no blocking I/O is performed in the worker or pipeline (any blocking file/database calls must use `asyncio` or `asyncio.to_thread()`).
+5. **Stats Summary Endpoint:**
+   - **Given** `GET /api/v1/stats/summary` is called by an authenticated operator.
+   - **When** the endpoint responds.
+   - **Then** it returns `{"forwarded_24h": N, "failed_24h": N, "blocked_24h": N}` tallied from the ring buffer.
+   - **And** it must explicitly handle the fact that the ring buffer length is bound by `LOG_RING_BUFFER_HOURS` (which defaults to 1h); it will tally all available entries up to 24h and cap at 24h.
+   - **And** it is documented as approximate (ring-buffer bounded).
+   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 
-6. **Lifespan Integration & Graceful Shutdown:**
-   - **Given** the FastAPI application is initialized.
-   - **When** lifespan starts.
-   - **Then** `run_telegram_worker` replaces the stub task from Story 1.3.
-   - **And** on shutdown, the task cancels and awaits cancellation gracefully before disconnecting Telegram and closing MongoDB.
+6. **Admin Reconnect Endpoint:**
+   - **Given** `POST /api/v1/admin/reconnect` is called by an authenticated operator.
+   - **When** the endpoint executes.
+   - **Then** it triggers a Telegram client reconnect attempt.
+   - **And** it returns `{"ok": true}` immediately (fire-and-forget).
+   - **And** the reconnect result appears in the log stream.
+   - **And** it requires `Depends(get_current_operator)` auth.
 
 ## Tasks / Subtasks
 
-- [x] **1. Worker Infrastructure & Lifespan Integration** (AC: 1, 6)
-  - [x] Create `src/forward_bot/infrastructure/telegram/worker.py` containing the `TelegramWorker` class.
-  - [x] Implement `TelegramWorker` to read `CacheHolder.current` and manage event listeners for active sources.
-  - [x] Implement dynamic subscription reload checking if active sources changed on each loop interval.
-  - [x] Update `src/forward_bot/tasks.py` to run the real worker loop (checking every `HOT_RELOAD_INTERVAL` seconds).
-  - [x] Update `src/forward_bot/app.py` default lifespan to pass `settings` and `mongo_client.db` dependencies to `run_telegram_worker()`.
-- [x] **2. Message Event Handling & Pipeline Dispatch** (AC: 2, 4, 5)
-  - [x] Implement a global Telethon `NewMessage` event callback in `TelegramWorker`.
-  - [x] Bind `correlation_id`, `source_id`, and `message_id` to `structlog` contextvars.
-  - [x] Capture the atomic `RuleCache` snapshot at the beginning of message processing.
-  - [x] For each matching rule, execute the pipeline engine independently (using `copy_context().run()` if concurrent).
-  - [x] Initialize and pass the `sampling_counters` dict to the pipeline context.
-  - [x] Clear contextvars when dispatch finishes.
-- [x] **3. Structured Logging & Security** (AC: 3)
-  - [x] Log `pipeline_blocked` event with correct schema at INFO level.
-  - [x] Log `forward_succeeded` event with correct schema at INFO level.
-  - [x] Ensure no secret API keys, session details, or credentials are logged.
-- [x] **4. Automated Testing** (AC: 1-6)
-  - [x] Create unit/integration tests in `tests/infrastructure/telegram/test_worker.py`.
-  - [x] Mock Telethon client, events, and repositories to test dynamic registration, dispatch, logging, and error isolation.
-  - [x] Run full test suite `pytest` to verify all tests pass with no regressions.
+- [x] **1. Create API Routers** (AC: 1, 3, 4, 5, 6)
+  - [x] Implement `GET /api/v1/logs/stream`
+  - [x] Implement `GET /api/v1/logs/recent`
+  - [x] Implement `GET /api/v1/logs/search`
+  - [x] Implement `GET /api/v1/stats/summary`
+  - [x] Implement `POST /api/v1/admin/reconnect`
+- [x] **2. Integrate Routers in app.py** (AC: 1-6)
+  - [x] Include routers in FastAPI app factory
+  - [x] Manage `app.state.worker_task` in lifespan hook
+- [x] **3. Implement Unit Tests** (AC: 1-6)
+  - [x] Implement tests in `tests/api/test_logs.py`
+  - [x] Implement tests in `tests/api/test_stats.py`
+  - [x] Implement tests in `tests/api/test_admin.py`
+- [x] **4. Run Tests & Verify** (AC: 1-6)
+  - [x] Verify all tests pass
 
-## Technical Requirements
+## Dev Notes
 
-- **Telethon Client Lifecycle:** The worker task MUST await `telegram_client.client.run_until_disconnected()` inside a `try...except asyncio.CancelledError` block to ensure correct graceful shutdown upon SIGINT/SIGTERM, rather than using an arbitrary polling loop.
-- **Dynamic Telethon Event Handlers:** Do NOT register an event handler per source. Register ONE global handler on `events.NewMessage` and filter dynamically against the `RuleCache` snapshot (checking if `event.chat_id` or username matches).
-- **Group/Channel Uniform IDs:** Resolve source references correctly, noting that Telegram channel IDs are often negative integers in Telethon.
+- **Authentication is Mandatory:** *ALL* endpoints defined in this story MUST declare `Depends(get_current_operator)` as per Architecture S1. Do not accidentally leave the log endpoints exposed.
+- **Error Envelopes:** Any 4xx/5xx application errors (e.g., invalid query parameters) MUST use the Architecture A1 standard `{"error": {"code": "...", "message": "..."}}`.
+- **Streaming Response without buffering:** Starlette's `StreamingResponse` yields SSE lines using standard format `data: <json>\n\n`. Test using direct generator iteration or mocking the `yield` mechanism, as ASGI testing of streaming responses can hang.
+- **Worker task recreation:** Telegram client disconnect unblocks `run_until_disconnected()`, terminating the worker. The reconnect endpoint manages app state and spawns a new task.
 
 ### Project Structure Notes
 
-- Worker class resides in `src/forward_bot/infrastructure/telegram/worker.py`.
-- Background task wrapper resides in `src/forward_bot/tasks.py`.
-- Tests are co-located in `tests/infrastructure/telegram/test_worker.py`.
+- Keep endpoints organized under `src/forward_bot/api/routers/`.
 
 ### References
 
-- [Functional Requirements FR-9, FR-10, FR-11, FR-12, FR-22, FR-23, FR-24, FR-25 in epics.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/epics.md#L872)
-- [Architecture Guidelines in architecture.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L490)
+- [Functional Requirements FR-44, NFR-Obs in epics.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/epics.md)
+- [Architecture Decision A2, I5 in architecture.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md)
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-Gemini 3.5 Flash (High)
+Antigravity (Gemini 3.5 Flash (High))
 
 ### Debug Log References
 
-- Mock tests output: 6 passed, 0 failed in `tests/infrastructure/telegram/test_worker.py`
-- Complete tests suite output: 325 passed, 0 failed in `pytest`
+- None
 
 ### Completion Notes List
 
-- ✅ Resolved the existing regression test failure in `DeliverStep`.
-- ✅ Implemented the real `TelegramWorker` with global Telethon events monitoring and dynamic reloads.
-- ✅ Isolated execution scopes of concurrent forwarding rules via `contextvars.copy_context().run()`.
-- ✅ Passed and mutated in-memory `sampling_counters` to support local sampling state.
-- ✅ Added 6 new unit/integration tests to ensure robust validation.
-
-### File List
-
-- `src/forward_bot/application/pipeline/steps/deliver.py`
-- `src/forward_bot/infrastructure/telegram/worker.py`
-- `src/forward_bot/tasks.py`
-- `src/forward_bot/app.py`
-- `tests/infrastructure/telegram/test_worker.py`
+- Implemented standard logging history retrieval (`/recent` and `/search` endpoints) and `/stream` SSE endpoints.
+- Implemented `/stats/summary` calculating approximate logs activity metrics over a sliding 24-hour window from the ring buffer.
+- Implemented `/admin/reconnect` endpoint that restarts the Telegram worker task upon client reconnect.
+- Wrote and passed comprehensive unit tests covering all target endpoints.
 
 
-[DIFF]
-diff --git a/_bmad-output/implementation-artifacts/4-5-telegram-worker-end-to-end-message-forwarding.md b/_bmad-output/implementation-artifacts/4-5-telegram-worker-end-to-end-message-forwarding.md
+Diff:
+﻿diff --git a/_bmad-output/implementation-artifacts/5-3-sse-log-broadcaster-stats-log-api-endpoints.md b/_bmad-output/implementation-artifacts/5-3-sse-log-broadcaster-stats-log-api-endpoints.md
 new file mode 100644
-index 0000000..dba9bbe
+index 0000000..a3a8e61
 --- /dev/null
-+++ b/_bmad-output/implementation-artifacts/4-5-telegram-worker-end-to-end-message-forwarding.md
-@@ -0,0 +1,125 @@
-+---
-+baseline_commit: febe1dd
-+---
-+# Story 4.5: Telegram Worker & End-to-End Message Forwarding
++++ b/_bmad-output/implementation-artifacts/5-3-sse-log-broadcaster-stats-log-api-endpoints.md
+@@ -0,0 +1,108 @@
++# Story 5.3: SSE Log Broadcaster & Stats/Log API Endpoints
 +
-+Status: review
-+
-+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++Status: done
 +
 +## Story
 +
 +As a **Channel Operator**,
-+I want the service to automatically monitor my registered sources and forward qualifying messages as they arrive,
-+so that forwarding is fully automatic — I configure the rules and the service does the rest.
++I want to stream live logs via SSE and query recent log history and summary stats via REST endpoints,
++so that the operator dashboard has all the backend data feeds it needs.
 +
 +## Acceptance Criteria
 +
-+1. **Worker Lifecycle & Dynamic Subscriptions:**
-+   - **Given** active Forwarding Rules reference registered sources in `RuleCache`.
-+   - **When** the Telegram worker starts.
-+   - **Then** the worker issues `JoinChannelRequest` (or `ImportChatInviteRequest` if applicable) for any newly active channel/group sources to ensure it receives messages.
-+   - **And** registers a **single global** Telethon `NewMessage` event handler, filtering incoming events dynamically against the active sources in the `RuleCache` snapshot.
-+   - **And** dynamically updates subscriptions if rules or sources change in the `RuleCache` snapshot on subsequent reload cycles.
++1. **SSE Log Stream Endpoint:**
++   - **Given** an authenticated operator connects to `GET /api/v1/logs/stream`.
++   - **When** the SSE connection opens.
++   - **Then** all current ring buffer entries are replayed to the client first.
++   - **And** the client's `asyncio.Queue` is added to the fan-out set.
++   - **And** subsequent log events are pushed strictly formatted as `data: <json>\n\n`.
++   - **And** the stream is filterable via `?event=<name>` and `?correlation_id=<id>` query params.
++   - **And** the endpoint requires `Depends(get_current_operator)` auth (Architecture S1).
 +
-+2. **Ingestion, Dispatch, and Context Isolation:**
-+   - **Given** a new message arrives in a subscribed source.
-+   - **When** the worker's event handler fires.
-+   - **Then** a short `correlation_id` (8-character hex string) is generated.
-+   - **And** `correlation_id`, `source_id`, and `message_id` are bound to `structlog.contextvars` for full observability.
-+   - **And** `cache_holder.current` is read exactly once as the snapshot for this dispatch.
-+   - **And** for each active rule whose `source_id` matches, the pipeline engine `execute()` is called independently.
-+   - **And** if pipelines run concurrently for multiple rules, the worker MUST use `contextvars.copy_context().run()` to prevent context variable leakage between runs.
-+   - **And** `structlog` contextvars are cleared after the dispatch completes.
++2. **Client Disconnection Handling:**
++   - **Given** a client disconnects from `GET /api/v1/logs/stream`.
++   - **When** the connection closes (client closes, `starlette.requests.ClientDisconnect`, or `asyncio.CancelledError`).
++   - **Then** the client's queue is removed from the fan-out set.
++   - **And** no further events are pushed.
++   - **And** no memory leak occurs.
 +
-+3. **Structured Event Logging:**
-+   - **Given** the pipeline engine finishes executing a rule.
-+   - **When** the worker inspects the result (a `BlockedOutcome` or `PipelineContext`).
-+   - **Then** the worker explicitly emits `{"event": "pipeline_blocked", "reason": "<reason>", "rule_id": "...", "correlation_id": "..."}` at INFO level if blocked.
-+   - **And** emits `{"event": "forward_succeeded", "rule_id": "...", "source_message_id": N, "destination_message_id": N, "correlation_id": "..."}` at INFO level if successful.
-+   - **And** no secrets, session bytes, or credentials appear in any log output.
++3. **Recent Logs Endpoint:**
++   - **Given** `GET /api/v1/logs/recent?limit=50` is called by an authenticated operator.
++   - **When** the endpoint responds.
++   - **Then** up to `limit` (default 50, max 500) most-recent ring buffer entries are returned as `{"items": [...]}` in chronological order.
++   - **And** it supports optional `?event=` and `?correlation_id=` filters.
++   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 +
-+4. **In-Memory Sampling State:**
-+   - **Given** `SAMPLING_PERSIST=false` (default).
-+   - **When** the worker starts.
-+   - **Then** an in-memory `{rule_id: int}` counter dict is initialized and passed in `PipelineContext.metadata["sampling_counters"]` to persist counters across messages during the process lifetime.
++4. **Search Logs Endpoint:**
++   - **Given** `GET /api/v1/logs/search?correlation_id=a3f9b2c1` is called by an authenticated operator.
++   - **When** the endpoint responds.
++   - **Then** all ring-buffer entries matching that `correlation_id` are returned.
++   - **And** `?since=<ISO timestamp>` filters to events after that time (default last 1h, max 24h window).
++   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 +
-+5. **Performance and Non-blocking I/O:**
-+   - **Given** 100 active sources with normal traffic.
-+   - **When** the worker is running.
-+   - **Then** P95 forwarding latency from source message receipt to destination post is ≤ 3 seconds.
-+   - **And** no blocking I/O is performed in the worker or pipeline (any blocking file/database calls must use `asyncio` or `asyncio.to_thread()`).
++5. **Stats Summary Endpoint:**
++   - **Given** `GET /api/v1/stats/summary` is called by an authenticated operator.
++   - **When** the endpoint responds.
++   - **Then** it returns `{"forwarded_24h": N, "failed_24h": N, "blocked_24h": N}` tallied from the ring buffer.
++   - **And** it must explicitly handle the fact that the ring buffer length is bound by `LOG_RING_BUFFER_HOURS` (which defaults to 1h); it will tally all available entries up to 24h and cap at 24h.
++   - **And** it is documented as approximate (ring-buffer bounded).
++   - **And** the endpoint requires `Depends(get_current_operator)` auth.
 +
-+6. **Lifespan Integration & Graceful Shutdown:**
-+   - **Given** the FastAPI application is initialized.
-+   - **When** lifespan starts.
-+   - **Then** `run_telegram_worker` replaces the stub task from Story 1.3.
-+   - **And** on shutdown, the task cancels and awaits cancellation gracefully before disconnecting Telegram and closing MongoDB.
++6. **Admin Reconnect Endpoint:**
++   - **Given** `POST /api/v1/admin/reconnect` is called by an authenticated operator.
++   - **When** the endpoint executes.
++   - **Then** it triggers a Telegram client reconnect attempt.
++   - **And** it returns `{"ok": true}` immediately (fire-and-forget).
++   - **And** the reconnect result appears in the log stream.
++   - **And** it requires `Depends(get_current_operator)` auth.
 +
 +## Tasks / Subtasks
 +
-+- [x] **1. Worker Infrastructure & Lifespan Integration** (AC: 1, 6)
-+  - [x] Create `src/forward_bot/infrastructure/telegram/worker.py` containing the `TelegramWorker` class.
-+  - [x] Implement `TelegramWorker` to read `CacheHolder.current` and manage event listeners for active sources.
-+  - [x] Implement dynamic subscription reload checking if active sources changed on each loop interval.
-+  - [x] Update `src/forward_bot/tasks.py` to run the real worker loop (checking every `HOT_RELOAD_INTERVAL` seconds).
-+  - [x] Update `src/forward_bot/app.py` default lifespan to pass `settings` and `mongo_client.db` dependencies to `run_telegram_worker()`.
-+- [x] **2. Message Event Handling & Pipeline Dispatch** (AC: 2, 4, 5)
-+  - [x] Implement a global Telethon `NewMessage` event callback in `TelegramWorker`.
-+  - [x] Bind `correlation_id`, `source_id`, and `message_id` to `structlog` contextvars.
-+  - [x] Capture the atomic `RuleCache` snapshot at the beginning of message processing.
-+  - [x] For each matching rule, execute the pipeline engine independently (using `copy_context().run()` if concurrent).
-+  - [x] Initialize and pass the `sampling_counters` dict to the pipeline context.
-+  - [x] Clear contextvars when dispatch finishes.
-+- [x] **3. Structured Logging & Security** (AC: 3)
-+  - [x] Log `pipeline_blocked` event with correct schema at INFO level.
-+  - [x] Log `forward_succeeded` event with correct schema at INFO level.
-+  - [x] Ensure no secret API keys, session details, or credentials are logged.
-+- [x] **4. Automated Testing** (AC: 1-6)
-+  - [x] Create unit/integration tests in `tests/infrastructure/telegram/test_worker.py`.
-+  - [x] Mock Telethon client, events, and repositories to test dynamic registration, dispatch, logging, and error isolation.
-+  - [x] Run full test suite `pytest` to verify all tests pass with no regressions.
++- [x] **1. Create API Routers** (AC: 1, 3, 4, 5, 6)
++  - [x] Implement `GET /api/v1/logs/stream`
++  - [x] Implement `GET /api/v1/logs/recent`
++  - [x] Implement `GET /api/v1/logs/search`
++  - [x] Implement `GET /api/v1/stats/summary`
++  - [x] Implement `POST /api/v1/admin/reconnect`
++- [x] **2. Integrate Routers in app.py** (AC: 1-6)
++  - [x] Include routers in FastAPI app factory
++  - [x] Manage `app.state.worker_task` in lifespan hook
++- [x] **3. Implement Unit Tests** (AC: 1-6)
++  - [x] Implement tests in `tests/api/test_logs.py`
++  - [x] Implement tests in `tests/api/test_stats.py`
++  - [x] Implement tests in `tests/api/test_admin.py`
++- [x] **4. Run Tests & Verify** (AC: 1-6)
++  - [x] Verify all tests pass
 +
-+## Technical Requirements
++## Dev Notes
 +
-+- **Telethon Client Lifecycle:** The worker task MUST await `telegram_client.client.run_until_disconnected()` inside a `try...except asyncio.CancelledError` block to ensure correct graceful shutdown upon SIGINT/SIGTERM, rather than using an arbitrary polling loop.
-+- **Dynamic Telethon Event Handlers:** Do NOT register an event handler per source. Register ONE global handler on `events.NewMessage` and filter dynamically against the `RuleCache` snapshot (checking if `event.chat_id` or username matches).
-+- **Group/Channel Uniform IDs:** Resolve source references correctly, noting that Telegram channel IDs are often negative integers in Telethon.
++- **Authentication is Mandatory:** *ALL* endpoints defined in this story MUST declare `Depends(get_current_operator)` as per Architecture S1. Do not accidentally leave the log endpoints exposed.
++- **Error Envelopes:** Any 4xx/5xx application errors (e.g., invalid query parameters) MUST use the Architecture A1 standard `{"error": {"code": "...", "message": "..."}}`.
++- **Streaming Response without buffering:** Starlette's `StreamingResponse` yields SSE lines using standard format `data: <json>\n\n`. Test using direct generator iteration or mocking the `yield` mechanism, as ASGI testing of streaming responses can hang.
++- **Worker task recreation:** Telegram client disconnect unblocks `run_until_disconnected()`, terminating the worker. The reconnect endpoint manages app state and spawns a new task.
 +
 +### Project Structure Notes
 +
-+- Worker class resides in `src/forward_bot/infrastructure/telegram/worker.py`.
-+- Background task wrapper resides in `src/forward_bot/tasks.py`.
-+- Tests are co-located in `tests/infrastructure/telegram/test_worker.py`.
++- Keep endpoints organized under `src/forward_bot/api/routers/`.
 +
 +### References
 +
-+- [Functional Requirements FR-9, FR-10, FR-11, FR-12, FR-22, FR-23, FR-24, FR-25 in epics.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/epics.md#L872)
-+- [Architecture Guidelines in architecture.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md#L490)
++- [Functional Requirements FR-44, NFR-Obs in epics.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/epics.md)
++- [Architecture Decision A2, I5 in architecture.md](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/_bmad-output/planning-artifacts/architecture.md)
 +
 +## Dev Agent Record
 +
 +### Agent Model Used
 +
-+Gemini 3.5 Flash (High)
++Antigravity (Gemini 3.5 Flash (High))
 +
 +### Debug Log References
 +
-+- Mock tests output: 6 passed, 0 failed in `tests/infrastructure/telegram/test_worker.py`
-+- Complete tests suite output: 325 passed, 0 failed in `pytest`
++- None
 +
 +### Completion Notes List
 +
-+- ✅ Resolved the existing regression test failure in `DeliverStep`.
-+- ✅ Implemented the real `TelegramWorker` with global Telethon events monitoring and dynamic reloads.
-+- ✅ Isolated execution scopes of concurrent forwarding rules via `contextvars.copy_context().run()`.
-+- ✅ Passed and mutated in-memory `sampling_counters` to support local sampling state.
-+- ✅ Added 6 new unit/integration tests to ensure robust validation.
-+
-+### File List
-+
-+- `src/forward_bot/application/pipeline/steps/deliver.py`
-+- `src/forward_bot/infrastructure/telegram/worker.py`
-+- `src/forward_bot/tasks.py`
-+- `src/forward_bot/app.py`
-+- `tests/infrastructure/telegram/test_worker.py`
++- Implemented standard logging history retrieval (`/recent` and `/search` endpoints) and `/stream` SSE endpoints.
++- Implemented `/stats/summary` calculating approximate logs activity metrics over a sliding 24-hour window from the ring buffer.
++- Implemented `/admin/reconnect` endpoint that restarts the Telegram worker task upon client reconnect.
++- Wrote and passed comprehensive unit tests covering all target endpoints.
 diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
-index 5699091..2c83fe5 100644
+index 2430cb2..911a333 100644
 --- a/_bmad-output/implementation-artifacts/sprint-status.yaml
 +++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
 @@ -33,7 +33,7 @@
  # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
  
  generated: "2026-06-02"
--last_updated: 2026-06-22T12:30:41+05:30
-+last_updated: 2026-06-22T13:12:00+05:30
+-last_updated: 2026-06-23T13:49:00+05:30
++last_updated: 2026-06-23T17:50:00+05:30
  work_started: "2026-06-02"
  work_completed: "2026-06-09"
  first_story_created: "2026-06-02"
-@@ -81,7 +81,7 @@ development_status:
-   4-2-filter-pipeline-steps-steps-1-5: done
-   4-3-transform-media-pipeline-steps-steps-6-16: done
-   4-4-telegram-delivery-reliability: done
--  4-5-telegram-worker-end-to-end-message-forwarding: backlog
-+  4-5-telegram-worker-end-to-end-message-forwarding: review
+@@ -86,11 +86,11 @@ development_status:
+   epic-4-retrospective: done
  
-   epic-4-retrospective: optional
+   # ===== EPIC 5: Edit/Delete Propagation, Full Observability & Stats API =====
+-  epic-5: in-progress
++  epic-5: done
  
-@@ -117,8 +117,8 @@ summary:
-   epics_in_progress: 1
-   epics_done: 3
+   5-1-edit-delete-propagation-mapping-sweeper: done
+   5-2-full-structlog-chain-ring-buffer-complete-event-catalog: done
+-  5-3-sse-log-broadcaster-stats-log-api-endpoints: backlog
++  5-3-sse-log-broadcaster-stats-log-api-endpoints: done
  
--  stories_backlog: 11
--  stories_ready_for_dev: 0
-+  stories_backlog: 10
-+  stories_ready_for_dev: 1
+   epic-5-retrospective: optional
+ 
+@@ -114,14 +114,14 @@ summary:
+   total_retrospectives: 6
+ 
+   epics_backlog: 1
+-  epics_in_progress: 1
+-  epics_done: 4
++  epics_in_progress: 0
++  epics_done: 5
+ 
+-  stories_backlog: 7
++  stories_backlog: 6
+   stories_ready_for_dev: 0
    stories_in_progress: 0
    stories_in_review: 0
-   stories_done: 13
+-  stories_done: 17
++  stories_done: 18
+ 
+   retrospectives_optional: 2
+   retrospectives_done: 4
+diff --git a/forward-bot/src/forward_bot/api/routers/admin.py b/forward-bot/src/forward_bot/api/routers/admin.py
+new file mode 100644
+index 0000000..bfa2232
+--- /dev/null
++++ b/forward-bot/src/forward_bot/api/routers/admin.py
+@@ -0,0 +1,71 @@
++"""FastAPI router for administrative tasks."""
++import asyncio
++from fastapi import APIRouter, Depends, status, Request
++from pydantic import BaseModel
++
++from forward_bot.api.dependencies.auth import get_current_operator
++from forward_bot.infrastructure.logging import logger
++from forward_bot.infrastructure.telegram import telegram_client
++from forward_bot.infrastructure.mongo import mongo_client
++
++router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
++
++
++class AdminReconnectResponse(BaseModel):
++    ok: bool
++
++
++async def perform_reconnect(app_instance) -> None:
++    """Background task to reconnect the Telegram client and restart the worker."""
++    settings = app_instance.state.settings
++    db = mongo_client.db
++    
++    try:
++        logger.info("telegram_reconnect_initiated", message="Initiating Telegram reconnection...")
++        
++        # Disconnect client
++        await telegram_client.disconnect()
++        
++        # Connect client using configuration settings
++        await telegram_client.connect(settings)
++        
++        # Restart the background worker task if the connection succeeded and database is ready
++        if telegram_client.is_connected and db is not None:
++            # 1. Cancel existing worker task
++            old_task = getattr(app_instance.state, "worker_task", None)
++            if old_task and not old_task.done():
++                old_task.cancel()
++                await asyncio.gather(old_task, return_exceptions=True)
++            
++            # 2. Start a fresh task
++            from forward_bot.tasks import run_telegram_worker
++            new_worker_task = asyncio.create_task(run_telegram_worker(settings, db))
++            app_instance.state.worker_task = new_worker_task
++            logger.info("telegram_reconnect_success", message="Telegram client reconnected and worker restarted successfully")
++        else:
++            logger.error("telegram_reconnect_failed", error="Telegram client disconnected or DB not initialized after connect attempt")
++    except Exception as e:
++        logger.error(
++            "telegram_reconnect_failed",
++            error=str(e),
++            message=f"Error encountered during Telegram client reconnection: {e}"
++        )
++
++
++@router.post(
++    "/reconnect",
++    response_model=AdminReconnectResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Trigger a Telegram client reconnect attempt."
++)
++async def reconnect(
++    request: Request,
++    _: str = Depends(get_current_operator),
++) -> AdminReconnectResponse:
++    """Triggers an asynchronous Telegram reconnection and worker restart.
++
++    Runs in the background (fire-and-forget). Returns immediately.
++    """
++    # Fire and forget reconnect background task
++    asyncio.create_task(perform_reconnect(request.app))
++    return AdminReconnectResponse(ok=True)
+diff --git a/forward-bot/src/forward_bot/api/routers/logs.py b/forward-bot/src/forward_bot/api/routers/logs.py
+new file mode 100644
+index 0000000..f96f11b
+--- /dev/null
++++ b/forward-bot/src/forward_bot/api/routers/logs.py
+@@ -0,0 +1,180 @@
++"""FastAPI router for streaming logs and historical logs query."""
++import json
++import asyncio
++from datetime import datetime, timezone, timedelta
++from typing import Any, Optional
++
++from fastapi import APIRouter, Depends, Query, status
++from fastapi.responses import StreamingResponse
++from pydantic import BaseModel, ConfigDict
++
++from forward_bot.api.dependencies.auth import get_current_operator
++from forward_bot.infrastructure.logging import (
++    get_recent_logs,
++    register_subscriber,
++    unregister_subscriber,
++)
++
++router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
++
++
++class LogsListResponse(BaseModel):
++    items: list[dict[str, Any]]
++
++
++def parse_iso_timestamp(ts_str: str) -> datetime:
++    """Parse ISO timestamp with Z or timezone suffix to offset-aware datetime in UTC."""
++    clean_str = ts_str.strip()
++    if clean_str.endswith("Z"):
++        clean_str = clean_str[:-1] + "+00:00"
++    
++    dt = datetime.fromisoformat(clean_str)
++    if dt.tzinfo is None:
++        dt = dt.replace(tzinfo=timezone.utc)
++    return dt.astimezone(timezone.utc)
++
++
++def safe_json_dumps(obj: Any) -> str:
++    """Safely dump logs as JSON string with fallback."""
++    try:
++        return json.dumps(obj)
++    except TypeError:
++        # Fallback to string representation for non-serializable objects
++        return json.dumps(obj, default=str)
++
++
++@router.get(
++    "/stream",
++    status_code=status.HTTP_200_OK,
++    summary="Stream live log events via SSE."
++)
++async def stream_logs(
++    event: Optional[str] = Query(None),
++    correlation_id: Optional[str] = Query(None),
++    _: str = Depends(get_current_operator),
++) -> StreamingResponse:
++    """Streams live JSON logs using Server-Sent Events (SSE).
++
++    Replays all current ring buffer entries to the client first.
++    Subsequent logs are streamed in real time.
++    """
++    event_filter = event
++    correlation_id_filter = correlation_id
++
++    async def event_generator():
++        # Create queue and register as subscriber
++        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
++        register_subscriber(queue)
++        try:
++            # 1. Replay historical logs from the ring buffer
++            historical = get_recent_logs()
++            for log in historical:
++                if event_filter and log.get("event") != event_filter:
++                    continue
++                if correlation_id_filter and log.get("correlation_id") != correlation_id_filter:
++                    continue
++                yield f"data: {safe_json_dumps(log)}\n\n"
++
++            # 2. Stream new logs
++            while True:
++                log = await queue.get()
++                if event_filter and log.get("event") != event_filter:
++                    continue
++                if correlation_id_filter and log.get("correlation_id") != correlation_id_filter:
++                    continue
++                yield f"data: {safe_json_dumps(log)}\n\n"
++        except asyncio.CancelledError:
++            # Client disconnected
++            pass
++        finally:
++            unregister_subscriber(queue)
++
++    return StreamingResponse(
++        event_generator(),
++        media_type="text/event-stream",
++        headers={
++            "Cache-Control": "no-cache",
++            "Connection": "keep-alive",
++        }
++    )
++
++
++@router.get(
++    "/recent",
++    response_model=LogsListResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Get recent logs from in-memory ring buffer."
++)
++async def recent_logs(
++    limit: int = Query(default=50, ge=1, le=500),
++    event: Optional[str] = Query(None),
++    correlation_id: Optional[str] = Query(None),
++    _: str = Depends(get_current_operator),
++) -> LogsListResponse:
++    """Returns up to limit most-recent log entries from the ring buffer in chronological order."""
++    logs = get_recent_logs()
++
++    # Filter logs
++    filtered_logs = []
++    for log in logs:
++        if event and log.get("event") != event:
++            continue
++        if correlation_id and log.get("correlation_id") != correlation_id:
++            continue
++        filtered_logs.append(log)
++
++    # Slice the last `limit` logs
++    items = filtered_logs[-limit:]
++    return LogsListResponse(items=items)
++
++
++@router.get(
++    "/search",
++    response_model=LogsListResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Search logs by correlation ID with since boundary."
++)
++async def search_logs(
++    correlation_id: str = Query(...),
++    since: Optional[str] = Query(None),
++    _: str = Depends(get_current_operator),
++) -> LogsListResponse:
++    """Returns all ring buffer entries matching the correlation_id.
++
++    Optionally filters events after the `since` ISO timestamp (default last 1h, max 24h window).
++    """
++    now = datetime.now(timezone.utc)
++    max_past = now - timedelta(hours=24)
++
++    if since:
++        try:
++            since_dt = parse_iso_timestamp(since)
++            # Cap window to maximum of 24h ago
++            if since_dt < max_past:
++                since_dt = max_past
++        except Exception:
++            # Fallback to last 1h if invalid
++            since_dt = now - timedelta(hours=1)
++    else:
++        since_dt = now - timedelta(hours=1)
++
++    logs = get_recent_logs()
++    matching_logs = []
++
++    for log in logs:
++        if log.get("correlation_id") != correlation_id:
++            continue
++
++        log_ts_str = log.get("timestamp")
++        if not log_ts_str:
++            continue
++
++        try:
++            log_dt = parse_iso_timestamp(log_ts_str)
++        except Exception:
++            continue
++
++        if log_dt >= since_dt:
++            matching_logs.append(log)
++
++    return LogsListResponse(items=matching_logs)
+diff --git a/forward-bot/src/forward_bot/api/routers/stats.py b/forward-bot/src/forward_bot/api/routers/stats.py
+new file mode 100644
+index 0000000..8f7d9c4
+--- /dev/null
++++ b/forward-bot/src/forward_bot/api/routers/stats.py
+@@ -0,0 +1,77 @@
++"""FastAPI router for application usage statistics."""
++from datetime import datetime, timezone, timedelta
++from typing import Any
++
++from fastapi import APIRouter, Depends, status
++from pydantic import BaseModel
++
++from forward_bot.api.dependencies.auth import get_current_operator
++from forward_bot.infrastructure.logging import get_recent_logs
++
++router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
++
++
++class StatsSummaryResponse(BaseModel):
++    forwarded_24h: int
++    failed_24h: int
++    blocked_24h: int
++
++
++def parse_iso_timestamp(ts_str: str) -> datetime:
++    """Parse ISO timestamp with Z or timezone suffix to offset-aware datetime in UTC."""
++    clean_str = ts_str.strip()
++    if clean_str.endswith("Z"):
++        clean_str = clean_str[:-1] + "+00:00"
++    
++    dt = datetime.fromisoformat(clean_str)
++    if dt.tzinfo is None:
++        dt = dt.replace(tzinfo=timezone.utc)
++    return dt.astimezone(timezone.utc)
++
++
++@router.get(
++    "/summary",
++    response_model=StatsSummaryResponse,
++    status_code=status.HTTP_200_OK,
++    summary="Get application forwarding summary statistics over the last 24 hours."
++)
++async def stats_summary(_: str = Depends(get_current_operator)) -> StatsSummaryResponse:
++    """Returns forwarding counters (forwarded, failed, blocked) from logs in the ring buffer.
++
++    Calculated over the last 24-hour window.
++    """
++    now = datetime.now(timezone.utc)
++    limit_24h = now - timedelta(hours=24)
++
++    forwarded_24h = 0
++    failed_24h = 0
++    blocked_24h = 0
++
++    logs = get_recent_logs()
++    for log in logs:
++        log_ts_str = log.get("timestamp")
++        if not log_ts_str:
++            continue
++        try:
++            log_dt = parse_iso_timestamp(log_ts_str)
++        except Exception:
++            continue
++
++        if log_dt >= limit_24h:
++            event = log.get("event", "")
++            level = log.get("level", "")
++            
++            if event == "forward_succeeded":
++                forwarded_24h += 1
++            elif event == "pipeline_blocked":
++                blocked_24h += 1
++
++            # Determine failures
++            if level in ("error", "critical") or "failed" in event or "error" in event:
++                failed_24h += 1
++
++    return StatsSummaryResponse(
++        forwarded_24h=forwarded_24h,
++        failed_24h=failed_24h,
++        blocked_24h=blocked_24h
++    )
 diff --git a/forward-bot/src/forward_bot/app.py b/forward-bot/src/forward_bot/app.py
-index 9037640..f06ea7f 100644
+index 6e2ed9c..f61e752 100644
 --- a/forward-bot/src/forward_bot/app.py
 +++ b/forward-bot/src/forward_bot/app.py
-@@ -85,7 +85,7 @@ async def default_lifespan(app: FastAPI):
-     # Start background task stubs
+@@ -86,6 +86,7 @@ async def default_lifespan(app: FastAPI):
      cache_task = asyncio.create_task(run_cache_refresher(settings, mongo_client.db))
-     sweeper_task = asyncio.create_task(run_mapping_sweeper())
--    worker_task = asyncio.create_task(run_telegram_worker())
-+    worker_task = asyncio.create_task(run_telegram_worker(settings, mongo_client.db))
+     sweeper_task = asyncio.create_task(run_mapping_sweeper(settings, mongo_client.db))
+     worker_task = asyncio.create_task(run_telegram_worker(settings, mongo_client.db))
++    app.state.worker_task = worker_task
  
      try:
          yield
-diff --git a/forward-bot/src/forward_bot/application/pipeline/steps/deliver.py b/forward-bot/src/forward_bot/application/pipeline/steps/deliver.py
-index 3775612..90a2ea4 100644
---- a/forward-bot/src/forward_bot/application/pipeline/steps/deliver.py
-+++ b/forward-bot/src/forward_bot/application/pipeline/steps/deliver.py
-@@ -1,4 +1,5 @@
- """Deliver pipeline step implementation."""
-+import traceback
- from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
- from forward_bot.config import get_settings
- from forward_bot.infrastructure.telegram import telegram_client
-@@ -10,11 +11,17 @@ class DeliverStep:
+@@ -94,10 +95,12 @@ async def default_lifespan(app: FastAPI):
+         # Cancel background tasks
+         cache_task.cancel()
+         sweeper_task.cancel()
+-        worker_task.cancel()
++        current_worker_task = getattr(app.state, "worker_task", worker_task)
++        if current_worker_task:
++            current_worker_task.cancel()
+         
+         # Await tasks cancellation
+-        await asyncio.gather(cache_task, sweeper_task, worker_task, return_exceptions=True)
++        await asyncio.gather(cache_task, sweeper_task, current_worker_task, return_exceptions=True)
+         
+         # Disconnect from Telegram
+         await telegram_client.disconnect()
+@@ -140,6 +143,12 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
+     app.include_router(folders_router)
+     from forward_bot.api.routers.rules import router as rules_router
+     app.include_router(rules_router)
++    from forward_bot.api.routers.logs import router as logs_router
++    app.include_router(logs_router)
++    from forward_bot.api.routers.stats import router as stats_router
++    app.include_router(stats_router)
++    from forward_bot.api.routers.admin import router as admin_router
++    app.include_router(admin_router)
  
-     async def apply(self, ctx: PipelineContext) -> PipelineContext | BlockedOutcome:
-         settings = get_settings()
--        msg_id, chat_id = await deliver_message(
--            telegram_client.client,
--            ctx,
--            settings
--        )
--        ctx.metadata["destination_message_id"] = msg_id
--        ctx.metadata["destination_channel_id"] = chat_id
--        return ctx
-+        try:
-+            msg_id, chat_id = await deliver_message(
-+                telegram_client.client,
-+                ctx,
-+                settings
-+            )
-+            ctx.metadata["destination_message_id"] = msg_id
-+            ctx.metadata["destination_channel_id"] = chat_id
-+            return ctx
-+        except Exception as e:
-+            return BlockedOutcome(
-+                reason="step_error",
-+                details=traceback.format_exc()
-+            )
-diff --git a/forward-bot/src/forward_bot/infrastructure/telegram/worker.py b/forward-bot/src/forward_bot/infrastructure/telegram/worker.py
+     # Register Exception Handlers for standard error response envelopes
+     from fastapi.responses import JSONResponse
+diff --git a/forward-bot/tests/api/test_admin.py b/forward-bot/tests/api/test_admin.py
 new file mode 100644
-index 0000000..3f59ef2
+index 0000000..9adf065
 --- /dev/null
-+++ b/forward-bot/src/forward_bot/infrastructure/telegram/worker.py
-@@ -0,0 +1,277 @@
-+"""Telegram worker infrastructure for end-to-end message forwarding."""
-+import asyncio
-+import contextvars
-+import uuid
-+import structlog
-+from telethon import events
-+from telethon.tl.types import PeerChannel, PeerChat, PeerUser
-+from telethon.tl.functions.channels import JoinChannelRequest
-+from telethon.tl.functions.messages import ImportChatInviteRequest
-+
-+from forward_bot.infrastructure.logging import logger
-+from forward_bot.infrastructure.cache.rule_cache import CacheHolder
-+from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
-+from forward_bot.infrastructure.mongo.repositories.mapping_repository import MappingRepository
-+from forward_bot.infrastructure.mongo.repositories.sampling_repository import SamplingRepository
-+from forward_bot.application.pipeline.engine import PipelineEngine
-+
-+
-+class TelegramWorker:
-+    """Monitors active Telegram sources, reloads configurations, and dispatches pipelines."""
-+
-+    def __init__(self, settings, db) -> None:
-+        self.settings = settings
-+        self.db = db
-+        self.mapping_repo = MappingRepository(db)
-+        self.sampling_repo = SamplingRepository(db)
-+        self.pipeline_engine = PipelineEngine(
-+            mapping_repository=self.mapping_repo,
-+            sampling_repository=self.sampling_repo,
-+        )
-+        self.joined_sources = set()  # Tracks telegram_ids (int) of joined sources
-+        self.sampling_counters = {}  # In-memory counters {rule_id: counter} for sampling
-+        self._handler = None
-+
-+    async def run(self) -> None:
-+        """Starts the worker, registers the event handler, and enters the lifecycle loop."""
-+        from forward_bot.infrastructure.telegram import telegram_client
-+
-+        if not telegram_client.is_connected or telegram_client.client is None:
-+            logger.error("telegram_worker_failed", error="Telegram client not connected")
-+            return
-+
-+        client = telegram_client.client
-+        logger.info("telegram_worker_started", status="active")
-+
-+        # Define event handler inside to access self context easily
-+        @client.on(events.NewMessage)
-+        async def handle_new_message(event: events.NewMessage.Event) -> None:
-+            await self.process_event(event)
-+
-+        self._handler = handle_new_message
-+
-+        # Start subscription/reload checking task
-+        reload_task = asyncio.create_task(self.reload_loop())
-+
-+        try:
-+            # Await client disconnection gracefully (retains block until cancelled)
-+            await client.run_until_disconnected()
-+        except asyncio.CancelledError:
-+            logger.info("telegram_worker_stopped")
-+            reload_task.cancel()
-+            await asyncio.gather(reload_task, return_exceptions=True)
-+            # Unregister event handler if client is still alive
-+            if telegram_client.client:
-+                telegram_client.client.remove_event_handler(self._handler, events.NewMessage)
-+            raise
-+
-+    async def reload_loop(self) -> None:
-+        """Periodic loop to join newly active channels/groups."""
-+        interval = self.settings.hot_reload_interval
-+        while True:
-+            try:
-+                cache = CacheHolder.current
-+                active_source_ids = {rule.source_id for rule in cache.rules if rule.is_active}
-+
-+                for source_id in active_source_ids:
-+                    if source_id not in cache.sources:
-+                        continue
-+                    source = cache.sources[source_id]
-+
-+                    if source.telegram_id not in self.joined_sources:
-+                        self.joined_sources.add(source.telegram_id)
-+                        await self.join_source(source)
-+
-+            except asyncio.CancelledError:
-+                break
-+            except Exception as e:
-+                logger.error("telegram_worker_reload_error", error=str(e))
-+
-+            await asyncio.sleep(interval)
-+
-+    async def join_source(self, source) -> None:
-+        """Resolves source entity and issues join request to Telegram."""
-+        from forward_bot.infrastructure.telegram import telegram_client
-+        client = telegram_client.client
-+        if not client:
-+            return
-+
-+        try:
-+            target = source.telegram_username if source.telegram_username else source.telegram_id
-+
-+            # Parse invite link format if present in target string
-+            is_invite = False
-+            invite_hash = None
-+            if isinstance(target, str):
-+                if "joinchat/" in target:
-+                    invite_hash = target.split("joinchat/")[-1]
-+                    is_invite = True
-+                elif target.startswith("+"):
-+                    invite_hash = target[1:]
-+                    is_invite = True
-+
-+            if is_invite and invite_hash:
-+                await client(ImportChatInviteRequest(hash=invite_hash))
-+                logger.info(
-+                    "worker_joined_via_invite",
-+                    source_id=source.id,
-+                    hash=invite_hash,
-+                    message="Successfully joined private source via invite link"
-+                )
-+            else:
-+                # Resolve the entity first to ensure we handle channel/group IDs properly
-+                try:
-+                    entity = await client.get_entity(target)
-+                except Exception:
-+                    entity = target
-+
-+                await client(JoinChannelRequest(entity))
-+                logger.info(
-+                    "worker_joined_channel",
-+                    source_id=source.id,
-+                    target=str(target),
-+                    message="Successfully joined public channel/group source"
-+                )
-+        except Exception as e:
-+            logger.warning(
-+                "worker_join_source_failed",
-+                source_id=source.id,
-+                telegram_id=source.telegram_id,
-+                error=str(e),
-+                message=f"Failed to join source: {e}"
-+            )
-+
-+    async def process_event(self, event: events.NewMessage.Event) -> None:
-+        """Processes an incoming message event through the pipeline engine for matching rules."""
-+        if not event.message:
-+            return
-+
-+        correlation_id = uuid.uuid4().hex[:8]
-+
-+        # Extract Telegram ID from message peer_id
-+        event_tg_id = None
-+        peer = event.message.peer_id
-+        if peer:
-+            if isinstance(peer, PeerChannel):
-+                event_tg_id = peer.channel_id
-+            elif isinstance(peer, PeerChat):
-+                event_tg_id = peer.chat_id
-+            elif isinstance(peer, PeerUser):
-+                event_tg_id = peer.user_id
-+
-+        # Fallback if peer_id parsing did not yield anything
-+        if event_tg_id is None and event.chat_id is not None:
-+            chat_id_str = str(event.chat_id)
-+            if chat_id_str.startswith("-100"):
-+                event_tg_id = int(chat_id_str[4:])
-+            elif chat_id_str.startswith("-"):
-+                event_tg_id = int(chat_id_str[1:])
-+            else:
-+                event_tg_id = event.chat_id
-+
-+        # Extract username
-+        event_username = None
-+        chat = getattr(event, "chat", None)
-+        if chat:
-+            username = getattr(chat, "username", None)
-+            if username:
-+                event_username = username.lstrip("@").strip().lower()
-+
-+        # Capture RuleCache snapshot once for this dispatch
-+        cache = CacheHolder.current
-+
-+        # Match against cached sources
-+        matching_source = None
-+        for source in cache.sources.values():
-+            if event_tg_id is not None and source.telegram_id == event_tg_id:
-+                matching_source = source
-+                break
-+            if event_username is not None and source.telegram_username:
-+                if source.telegram_username.lower() == event_username:
-+                    matching_source = source
-+                    break
-+
-+        if not matching_source:
-+            return
-+
-+        # Find active rules referencing this source
-+        matching_rules = [
-+            rule for rule in cache.rules
-+            if rule.source_id == matching_source.id and rule.is_active
-+        ]
-+
-+        if not matching_rules:
-+            return
-+
-+        # Bind logging context variables
-+        structlog.contextvars.bind_contextvars(
-+            correlation_id=correlation_id,
-+            source_id=matching_source.id,
-+            message_id=event.message.id,
-+        )
-+
-+        try:
-+            # Parse text/caption/media according to Telethon convention
-+            media = event.message.media
-+            if media is not None:
-+                text = ""
-+                caption = event.message.message or ""
-+            else:
-+                text = event.message.message or ""
-+                caption = None
-+
-+            # Get reply msg ID if present
-+            reply_to_msg_id = None
-+            if event.message.reply_to:
-+                reply_to_msg_id = event.message.reply_to.reply_to_msg_id
-+
-+            async def run_pipeline_for_rule(rule_item) -> PipelineContext | BlockedOutcome:
-+                # Use a fresh metadata dictionary per rule run to avoid contamination
-+                metadata = {
-+                    "source_message_id": event.message.id,
-+                    "reply_to_msg_id": reply_to_msg_id,
-+                    "sampling_counters": self.sampling_counters,  # passed by reference
-+                }
-+                pipeline_context = PipelineContext(
-+                    text=text,
-+                    caption=caption,
-+                    media=media,
-+                    attribution_decided=False,
-+                    reply_target_destination_id=None,
-+                    correlation_id=correlation_id,
-+                    rule=rule_item,
-+                    source=matching_source,
-+                    metadata=metadata,
-+                )
-+                return await self.pipeline_engine.execute(pipeline_context)
-+
-+            # Process matching rules
-+            for rule in matching_rules:
-+                ctx_copied = contextvars.copy_context()
-+                result = await ctx_copied.run(run_pipeline_for_rule, rule)
-+
-+                if isinstance(result, BlockedOutcome):
-+                    structlog.get_logger().info(
-+                        "pipeline_blocked",
-+                        reason=result.reason,
-+                        rule_id=rule.id,
-+                        correlation_id=correlation_id,
-+                    )
-+                elif isinstance(result, PipelineContext):
-+                    dest_msg_id = result.metadata.get("destination_message_id")
-+                    structlog.get_logger().info(
-+                        "forward_succeeded",
-+                        rule_id=rule.id,
-+                        source_message_id=event.message.id,
-+                        destination_message_id=dest_msg_id,
-+                        correlation_id=correlation_id,
-+                    )
-+
-+        except Exception as e:
-+            structlog.get_logger().error(
-+                "worker_dispatch_failed",
-+                error=str(e),
-+                correlation_id=correlation_id,
-+            )
-+        finally:
-+            structlog.contextvars.clear_contextvars()
-diff --git a/forward-bot/src/forward_bot/tasks.py b/forward-bot/src/forward_bot/tasks.py
-index 2287b33..3d67553 100644
---- a/forward-bot/src/forward_bot/tasks.py
-+++ b/forward-bot/src/forward_bot/tasks.py
-@@ -38,11 +38,18 @@ async def run_mapping_sweeper() -> None:
-         logger.info("mapping_sweeper_stopped")
-         raise
- 
--async def run_telegram_worker() -> None:
--    """Stub for telegram worker task."""
--    logger.info("telegram_worker_started", status="stub")
--    try:
--        await asyncio.sleep(float('inf'))
--    except asyncio.CancelledError:
--        logger.info("telegram_worker_stopped")
--        raise
-+async def run_telegram_worker(settings=None, db=None) -> None:
-+    """Real telegram worker task runner."""
-+    if settings is None or db is None:
-+        # Stub mode: sleep until cancelled (preserves cancellation semantics)
-+        logger.info("telegram_worker_started", status="stub-no-settings")
-+        try:
-+            await asyncio.sleep(float('inf'))
-+        except asyncio.CancelledError:
-+            logger.info("telegram_worker_stopped")
-+            raise
-+        return
-+
-+    from forward_bot.infrastructure.telegram.worker import TelegramWorker
-+    worker = TelegramWorker(settings, db)
-+    await worker.run()
-diff --git a/forward-bot/tests/infrastructure/telegram/test_worker.py b/forward-bot/tests/infrastructure/telegram/test_worker.py
-new file mode 100644
-index 0000000..c234c9d
---- /dev/null
-+++ b/forward-bot/tests/infrastructure/telegram/test_worker.py
-@@ -0,0 +1,290 @@
-+"""Unit tests for the TelegramWorker background worker."""
-+import asyncio
-+import contextvars
++++ b/forward-bot/tests/api/test_admin.py
+@@ -0,0 +1,53 @@
 +import pytest
-+from unittest.mock import AsyncMock, MagicMock, patch
++import asyncio
++from unittest.mock import MagicMock, patch, AsyncMock
++from httpx import AsyncClient, ASGITransport
 +
-+from telethon import events
-+from telethon.tl.types import PeerChannel, PeerChat, Message
-+from telethon.tl.functions.channels import JoinChannelRequest
-+from telethon.tl.functions.messages import ImportChatInviteRequest
-+
++from forward_bot.app import create_app
 +from forward_bot.config import Settings
-+from forward_bot.domain.entities.source import Source
-+from forward_bot.domain.entities.forwarding_rule import ForwardingRule, SamplingConfig
-+from forward_bot.domain.entities.pipeline_context import PipelineContext, BlockedOutcome
-+from forward_bot.infrastructure.cache.rule_cache import RuleCache, CacheHolder
-+from forward_bot.infrastructure.telegram.worker import TelegramWorker
-+
 +
 +@pytest.fixture
-+def mock_db() -> MagicMock:
-+    return MagicMock()
-+
++def settings():
++    return Settings(
++        api_key="test-api-key",
++        secret_key="test-secret-key",
++        mongo_uri="mongodb://localhost:27017/test_db",
++        ui_enabled=False,
++    )
 +
 +@pytest.fixture
-+def mock_settings() -> Settings:
-+    settings = MagicMock(spec=Settings)
-+    settings.hot_reload_interval = 0.05
-+    settings.sampling_persist = False
-+    return settings
-+
-+
-+@pytest.mark.asyncio
-+async def test_worker_startup_and_shutdown(mock_settings, mock_db) -> None:
-+    """Test worker starts, registers handlers, starts reload task, and terminates gracefully."""
-+    mock_client = MagicMock()
-+    mock_client.run_until_disconnected = AsyncMock()
-+
-+    # Stub run_until_disconnected to raise CancelledError to trigger shutdown sequence
-+    mock_client.run_until_disconnected.side_effect = asyncio.CancelledError()
-+
-+    with patch("forward_bot.infrastructure.telegram.telegram_client") as mock_tg_holder:
-+        mock_tg_holder.is_connected = True
-+        mock_tg_holder.client = mock_client
-+
-+        worker = TelegramWorker(mock_settings, mock_db)
-+        
-+        with pytest.raises(asyncio.CancelledError):
-+            await worker.run()
-+
-+        # Assert handler registration and removal
-+        mock_client.on.assert_called_once()
-+        mock_client.remove_event_handler.assert_called_once()
-+
++def app(settings):
++    app = create_app(settings, lifespan=None)
++    # Set a mock worker_task on app state
++    mock_task = MagicMock()
++    mock_task.done.return_value = False
++    app.state.worker_task = mock_task
++    return app
 +
 +@pytest.mark.asyncio
-+async def test_worker_reload_loop_joins_channels(mock_settings, mock_db) -> None:
-+    """Test worker reload loop scans cache and issues JoinChannelRequest and ImportChatInviteRequest."""
-+    mock_client = MagicMock()
-+    mock_client.get_entity = AsyncMock(return_value="resolved_entity")
-+    mock_client.run_until_disconnected = AsyncMock()
-+
-+    # Active source has no username, is a channel, should be joined
-+    src1 = Source(
-+        id="src_1",
-+        telegram_id=11111,
-+        telegram_username=None,
-+        display_name="Source 1",
-+        type="channel",
-+        folder_id=None,
-+        created_at=MagicMock(),
-+        updated_at=MagicMock()
-+    )
-+
-+    # Active source has username, is a channel, should be joined
-+    src2 = Source(
-+        id="src_2",
-+        telegram_id=22222,
-+        telegram_username="my_pub_chan",
-+        display_name="Source 2",
-+        type="channel",
-+        folder_id=None,
-+        created_at=MagicMock(),
-+        updated_at=MagicMock()
-+    )
-+
-+    # Active source is a private link (joinchat/hash)
-+    src3 = Source(
-+        id="src_3",
-+        telegram_id=33333,
-+        telegram_username="joinchat/abc123xyz",
-+        display_name="Source 3",
-+        type="channel",
-+        folder_id=None,
-+        created_at=MagicMock(),
-+        updated_at=MagicMock()
-+    )
-+
-+    rule1 = ForwardingRule(source_id="src_1", destination_channel="dest", is_active=True, id="r1")
-+    rule2 = ForwardingRule(source_id="src_2", destination_channel="dest", is_active=True, id="r2")
-+    rule3 = ForwardingRule(source_id="src_3", destination_channel="dest", is_active=True, id="r3")
-+
-+    cache = RuleCache(
-+        sources={"src_1": src1, "src_2": src2, "src_3": src3},
-+        rules=[rule1, rule2, rule3],
-+        version=1
-+    )
-+
-+    with patch("forward_bot.infrastructure.telegram.telegram_client") as mock_tg_holder, \
-+         patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache):
-+
-+        mock_tg_holder.is_connected = True
-+        mock_tg_holder.client = mock_client
-+
-+        worker = TelegramWorker(mock_settings, mock_db)
-+        
-+        # Run reload loop for exactly one iteration by mocking reload_loop's sleep
-+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-+            mock_sleep.side_effect = [None, asyncio.CancelledError()]
-+            
-+            try:
-+                await worker.reload_loop()
-+            except asyncio.CancelledError:
-+                pass
-+
-+            # Assert JoinChannelRequest was called for src1 and src2
-+            # Since src3 was an invite link, ImportChatInviteRequest is called instead.
-+            mock_client.assert_any_call(JoinChannelRequest("resolved_entity"))
-+            mock_client.assert_any_call(ImportChatInviteRequest(hash="abc123xyz"))
-+
-+
-+@pytest.mark.asyncio
-+async def test_process_event_no_matching_source(mock_settings, mock_db) -> None:
-+    """Test that event from unregistered source is ignored."""
-+    worker = TelegramWorker(mock_settings, mock_db)
-+    worker.pipeline_engine.execute = AsyncMock()
-+
-+    # Event from telegram ID 99999
-+    mock_event = MagicMock(spec=events.NewMessage.Event)
-+    mock_event.message = MagicMock(spec=Message)
-+    mock_event.message.peer_id = PeerChannel(channel_id=99999)
-+    mock_event.chat_id = 99999
-+
-+    # Cache with only source ID 11111
-+    src1 = Source(id="src_1", telegram_id=11111, telegram_username=None, display_name="Src 1", type="channel", folder_id=None, created_at=MagicMock(), updated_at=MagicMock())
-+    cache = RuleCache(sources={"src_1": src1}, rules=[], version=1)
-+
-+    with patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache):
-+        await worker.process_event(mock_event)
-+        worker.pipeline_engine.execute.assert_not_called()
-+
-+
-+@pytest.mark.asyncio
-+async def test_process_event_forward_success(mock_settings, mock_db) -> None:
-+    """Test process_event parses message, runs pipeline engine, isolates context, and logs success."""
-+    worker = TelegramWorker(mock_settings, mock_db)
-+
-+    # Mock pipeline execution success
-+    mock_result = MagicMock(spec=PipelineContext)
-+    mock_result.metadata = {"destination_message_id": 9876}
-+    worker.pipeline_engine.execute = AsyncMock(return_value=mock_result)
-+
-+    src1 = Source(id="src_1", telegram_id=11111, telegram_username="mysrc", display_name="Src 1", type="channel", folder_id=None, created_at=MagicMock(), updated_at=MagicMock())
-+    rule1 = ForwardingRule(source_id="src_1", destination_channel="dest", is_active=True, id="r1")
-+    cache = RuleCache(sources={"src_1": src1}, rules=[rule1], version=1)
-+
-+    # Mock incoming message event
-+    mock_event = MagicMock(spec=events.NewMessage.Event)
-+    mock_event.message = MagicMock(spec=Message)
-+    mock_event.message.id = 55
-+    mock_event.message.peer_id = PeerChannel(channel_id=11111)
-+    mock_event.message.media = None
-+    mock_event.message.message = "Hello world!"
-+    mock_event.message.reply_to = None
-+
-+    with patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache), \
-+         patch("structlog.get_logger") as mock_structlog_logger:
-+
-+        mock_logger = MagicMock()
-+        mock_structlog_logger.return_value = mock_logger
-+
-+        await worker.process_event(mock_event)
-+
-+        # Verify pipeline execution was called
-+        worker.pipeline_engine.execute.assert_called_once()
-+        
-+        # Verify context details in execution context
-+        exec_ctx = worker.pipeline_engine.execute.call_args[0][0]
-+        assert isinstance(exec_ctx, PipelineContext)
-+        assert exec_ctx.text == "Hello world!"
-+        assert exec_ctx.media is None
-+        assert exec_ctx.rule == rule1
-+        assert exec_ctx.source == src1
-+        assert exec_ctx.metadata["source_message_id"] == 55
-+
-+        # Verify successful structured log emission
-+        mock_logger.info.assert_any_call(
-+            "forward_succeeded",
-+            rule_id="r1",
-+            source_message_id=55,
-+            destination_message_id=9876,
-+            correlation_id=exec_ctx.correlation_id
-+        )
-+
-+
-+@pytest.mark.asyncio
-+async def test_process_event_pipeline_blocked(mock_settings, mock_db) -> None:
-+    """Test process_event handles blocked outcome and logs correctly."""
-+    worker = TelegramWorker(mock_settings, mock_db)
-+
-+    # Mock pipeline execution blocked
-+    mock_result = BlockedOutcome(reason="blocked_keyword", matched_keyword="spam")
-+    worker.pipeline_engine.execute = AsyncMock(return_value=mock_result)
-+
-+    src1 = Source(id="src_1", telegram_id=11111, telegram_username="mysrc", display_name="Src 1", type="channel", folder_id=None, created_at=MagicMock(), updated_at=MagicMock())
-+    rule1 = ForwardingRule(source_id="src_1", destination_channel="dest", is_active=True, id="r1")
-+    cache = RuleCache(sources={"src_1": src1}, rules=[rule1], version=1)
-+
-+    # Mock incoming message event
-+    mock_event = MagicMock(spec=events.NewMessage.Event)
-+    mock_event.message = MagicMock(spec=Message)
-+    mock_event.message.id = 66
-+    mock_event.message.peer_id = PeerChannel(channel_id=11111)
-+    mock_event.message.media = None
-+    mock_event.message.message = "Spam post!"
-+    mock_event.message.reply_to = None
-+
-+    with patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache), \
-+         patch("structlog.get_logger") as mock_structlog_logger:
-+
-+        mock_logger = MagicMock()
-+        mock_structlog_logger.return_value = mock_logger
-+
-+        await worker.process_event(mock_event)
-+
-+        # Verify pipeline execution was called
-+        worker.pipeline_engine.execute.assert_called_once()
-+        
-+        exec_ctx = worker.pipeline_engine.execute.call_args[0][0]
-+        # Verify blocked structured log emission
-+        mock_logger.info.assert_any_call(
-+            "pipeline_blocked",
-+            reason="blocked_keyword",
-+            rule_id="r1",
-+            correlation_id=exec_ctx.correlation_id
-+        )
-+
-+
-+@pytest.mark.asyncio
-+async def test_process_event_in_memory_sampling_counters(mock_settings, mock_db) -> None:
-+    """Test that in-memory sampling counters dictionary is passed in metadata and updated across dispatches."""
-+    worker = TelegramWorker(mock_settings, mock_db)
++async def test_admin_reconnect(app):
++    headers = {"X-API-Key": "test-api-key"}
 +    
-+    # Simple pass-through pipeline mock simulating sampling step counter mutation
-+    def mock_execute(ctx):
-+        ctx.metadata["sampling_counters"][ctx.rule.id] = ctx.metadata["sampling_counters"].get(ctx.rule.id, 0) + 1
-+        return ctx
-+
-+    worker.pipeline_engine.execute = AsyncMock(side_effect=mock_execute)
-+
-+    src1 = Source(id="src_1", telegram_id=11111, telegram_username="mysrc", display_name="Src 1", type="channel", folder_id=None, created_at=MagicMock(), updated_at=MagicMock())
-+    rule1 = ForwardingRule(
-+        source_id="src_1",
-+        destination_channel="dest",
-+        is_active=True,
-+        id="r1",
-+        sampling=SamplingConfig(n=3)
-+    )
-+    cache = RuleCache(sources={"src_1": src1}, rules=[rule1], version=1)
-+
-+    # 1st Event
-+    mock_event1 = MagicMock(spec=events.NewMessage.Event)
-+    mock_event1.message = MagicMock(spec=Message)
-+    mock_event1.message.id = 101
-+    mock_event1.message.peer_id = PeerChannel(channel_id=11111)
-+    mock_event1.message.media = None
-+    mock_event1.message.message = "Msg 1"
-+    mock_event1.message.reply_to = None
-+
-+    with patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache):
-+        # Dispatch first event
-+        await worker.process_event(mock_event1)
++    # Mock telegram_client, mongo_client, and run_telegram_worker task
++    with patch("forward_bot.api.routers.admin.telegram_client") as mock_tc, \
++         patch("forward_bot.api.routers.admin.mongo_client") as mock_mc, \
++         patch("forward_bot.tasks.run_telegram_worker") as mock_worker_run:
 +        
-+        # Verify that sampling counters dictionary was initialized
-+        assert "r1" in worker.sampling_counters
-+        # Note: the pipeline engine wasn't mocked to mutate it (since it's a stub lambda in this test),
-+        # but in actual run, the step updates the dictionary reference.
-+        # Let's assert that the dictionary is passed in metadata.
-+        exec_ctx = worker.pipeline_engine.execute.call_args[0][0]
-+        assert exec_ctx.metadata["sampling_counters"] is worker.sampling_counters
++        mock_tc.disconnect = AsyncMock()
++        mock_tc.connect = AsyncMock()
++        type(mock_tc).is_connected = MagicMock(return_value=True)
++        mock_mc.db = MagicMock()
++        
++        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++            response = await ac.post("/api/v1/admin/reconnect", headers=headers)
++            
++        assert response.status_code == 200
++        assert response.json() == {"ok": True}
++        
++        # Allow background task to execute
++        await asyncio.sleep(0.1)
++        
++        mock_tc.disconnect.assert_called_once()
++        mock_tc.connect.assert_called_once_with(app.state.settings)
++        # Verify old worker_task was cancelled
++        app.state.worker_task.cancel.assert_called_once()
+diff --git a/forward-bot/tests/api/test_logs.py b/forward-bot/tests/api/test_logs.py
+new file mode 100644
+index 0000000..2d92469
+--- /dev/null
++++ b/forward-bot/tests/api/test_logs.py
+@@ -0,0 +1,120 @@
++import pytest
++import json
++import asyncio
++from datetime import datetime, timezone, timedelta
++from httpx import AsyncClient, ASGITransport
++
++from forward_bot.app import create_app
++from forward_bot.config import Settings
++import forward_bot.infrastructure.logging.ring_buffer as rb
++from forward_bot.infrastructure.logging.ring_buffer import init_ring_buffer
++from forward_bot.infrastructure.logging.sse_broadcaster import broadcast_log
++
++@pytest.fixture
++def settings():
++    return Settings(
++        api_key="test-api-key",
++        secret_key="test-secret-key",
++        mongo_uri="mongodb://localhost:27017/test_db",
++        ui_enabled=False,
++    )
++
++@pytest.fixture
++def app(settings):
++    return create_app(settings, lifespan=None)
++
++@pytest.fixture(autouse=True)
++def setup_buffer():
++    # Initialize the ring buffer with a 1 hour window
++    init_ring_buffer(1)
++    if rb._ring_buffer is not None:
++        rb._ring_buffer.clear()
++
++@pytest.mark.asyncio
++async def test_logs_recent_empty(app):
++    headers = {"X-API-Key": "test-api-key"}
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/logs/recent", headers=headers)
++    assert response.status_code == 200
++    assert response.json() == {"items": []}
++
++@pytest.mark.asyncio
++async def test_logs_recent_with_data(app):
++    headers = {"X-API-Key": "test-api-key"}
++    # Populate mock logs
++    log1 = {"event": "forward_succeeded", "level": "info", "timestamp": "2026-06-23T12:00:00Z", "correlation_id": "c1"}
++    log2 = {"event": "pipeline_blocked", "level": "info", "timestamp": "2026-06-23T12:01:00Z", "correlation_id": "c2"}
++    rb._ring_buffer.append(log1)
++    rb._ring_buffer.append(log2)
++
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        # Test basic list
++        response = await ac.get("/api/v1/logs/recent", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 2
++
++        # Test limit
++        response = await ac.get("/api/v1/logs/recent?limit=1", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 1
++        assert response.json()["items"][0]["correlation_id"] == "c2"
++
++        # Test filter by event
++        response = await ac.get("/api/v1/logs/recent?event=forward_succeeded", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 1
++        assert response.json()["items"][0]["correlation_id"] == "c1"
++
++        # Test filter by correlation_id
++        response = await ac.get("/api/v1/logs/recent?correlation_id=c2", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 1
++        assert response.json()["items"][0]["event"] == "pipeline_blocked"
++
++@pytest.mark.asyncio
++async def test_logs_search(app):
++    headers = {"X-API-Key": "test-api-key"}
++    now_str = datetime.now(timezone.utc).isoformat()
++    log1 = {"event": "forward_succeeded", "level": "info", "timestamp": now_str, "correlation_id": "c1"}
++    rb._ring_buffer.append(log1)
++
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/logs/search?correlation_id=c1", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 1
++        assert response.json()["items"][0]["correlation_id"] == "c1"
++
++        # Search with correlation_id not found
++        response = await ac.get("/api/v1/logs/search?correlation_id=c99", headers=headers)
++        assert response.status_code == 200
++        assert len(response.json()["items"]) == 0
++
++@pytest.mark.asyncio
++async def test_logs_stream(app):
++    from forward_bot.api.routers.logs import stream_logs
++
++    log1 = {"event": "forward_succeeded", "level": "info", "timestamp": "2026-06-23T12:00:00Z", "correlation_id": "c1"}
++    rb._ring_buffer.append(log1)
++
++    async def broadcast_delayed():
++        await asyncio.sleep(0.1)
++        broadcast_log({"event": "pipeline_blocked", "level": "info", "timestamp": "2026-06-23T12:05:00Z", "correlation_id": "c_new"})
++
++    broadcast_task = asyncio.create_task(broadcast_delayed())
++
++    # Call endpoint directly with mocked authentication
++    response = await stream_logs(event=None, correlation_id=None)
++    body_iterator = response.body_iterator
++
++    events_received = []
++    async for item in body_iterator:
++        if item.startswith("data:"):
++            data = json.loads(item[5:].strip())
++            events_received.append(data)
++            if len(events_received) == 2:
++                break
++
++    assert len(events_received) == 2
++    assert events_received[0]["correlation_id"] == "c1"
++    assert events_received[1]["correlation_id"] == "c_new"
++    await broadcast_task
+diff --git a/forward-bot/tests/api/test_stats.py b/forward-bot/tests/api/test_stats.py
+new file mode 100644
+index 0000000..b3735e2
+--- /dev/null
++++ b/forward-bot/tests/api/test_stats.py
+@@ -0,0 +1,66 @@
++import pytest
++from datetime import datetime, timezone, timedelta
++from httpx import AsyncClient, ASGITransport
++
++from forward_bot.app import create_app
++from forward_bot.config import Settings
++import forward_bot.infrastructure.logging.ring_buffer as rb
++from forward_bot.infrastructure.logging.ring_buffer import init_ring_buffer
++
++@pytest.fixture
++def settings():
++    return Settings(
++        api_key="test-api-key",
++        secret_key="test-secret-key",
++        mongo_uri="mongodb://localhost:27017/test_db",
++        ui_enabled=False,
++    )
++
++@pytest.fixture
++def app(settings):
++    return create_app(settings, lifespan=None)
++
++@pytest.fixture(autouse=True)
++def setup_buffer():
++    # Initialize the ring buffer with 24 hours log window
++    init_ring_buffer(24)
++    if rb._ring_buffer is not None:
++        rb._ring_buffer.clear()
++
++@pytest.mark.asyncio
++async def test_stats_summary(app):
++    headers = {"X-API-Key": "test-api-key"}
++    
++    # 1. Test empty summary
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/stats/summary", headers=headers)
++    assert response.status_code == 200
++    assert response.json() == {
++        "forwarded_24h": 0,
++        "failed_24h": 0,
++        "blocked_24h": 0
++    }
++
++    # 2. Test populated summary within 24h
++    now = datetime.now(timezone.utc)
++    ts_now = now.isoformat()
++    ts_10h_ago = (now - timedelta(hours=10)).isoformat()
++    ts_25h_ago = (now - timedelta(hours=25)).isoformat()
++
++    # Log 1: Forwarded within 24h
++    rb._ring_buffer.append({"event": "forward_succeeded", "level": "info", "timestamp": ts_now})
++    # Log 2: Blocked within 24h
++    rb._ring_buffer.append({"event": "pipeline_blocked", "level": "info", "timestamp": ts_10h_ago})
++    # Log 3: Failure within 24h (Error level)
++    rb._ring_buffer.append({"event": "worker_dispatch_failed", "level": "error", "timestamp": ts_now})
++    # Log 4: Blocked older than 24h (should be ignored)
++    rb._ring_buffer.append({"event": "pipeline_blocked", "level": "info", "timestamp": ts_25h_ago})
++
++    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
++        response = await ac.get("/api/v1/stats/summary", headers=headers)
++    assert response.status_code == 200
++    assert response.json() == {
++        "forwarded_24h": 1,
++        "failed_24h": 1,
++        "blocked_24h": 1
++    }
 

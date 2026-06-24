@@ -86,6 +86,7 @@ async def default_lifespan(app: FastAPI):
     cache_task = asyncio.create_task(run_cache_refresher(settings, mongo_client.db))
     sweeper_task = asyncio.create_task(run_mapping_sweeper(settings, mongo_client.db))
     worker_task = asyncio.create_task(run_telegram_worker(settings, mongo_client.db))
+    app.state.worker_task = worker_task
 
     try:
         yield
@@ -94,10 +95,12 @@ async def default_lifespan(app: FastAPI):
         # Cancel background tasks
         cache_task.cancel()
         sweeper_task.cancel()
-        worker_task.cancel()
+        current_worker_task = getattr(app.state, "worker_task", worker_task)
+        if current_worker_task:
+            current_worker_task.cancel()
         
         # Await tasks cancellation
-        await asyncio.gather(cache_task, sweeper_task, worker_task, return_exceptions=True)
+        await asyncio.gather(cache_task, sweeper_task, current_worker_task, return_exceptions=True)
         
         # Disconnect from Telegram
         await telegram_client.disconnect()
@@ -140,6 +143,12 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
     app.include_router(folders_router)
     from forward_bot.api.routers.rules import router as rules_router
     app.include_router(rules_router)
+    from forward_bot.api.routers.logs import router as logs_router
+    app.include_router(logs_router)
+    from forward_bot.api.routers.stats import router as stats_router
+    app.include_router(stats_router)
+    from forward_bot.api.routers.admin import router as admin_router
+    app.include_router(admin_router)
 
     # Register Exception Handlers for standard error response envelopes
     from fastapi.responses import JSONResponse
