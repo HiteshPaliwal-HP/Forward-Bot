@@ -4,6 +4,7 @@ from fastapi import APIRouter, Response, status
 from forward_bot.infrastructure.mongo import mongo_client
 from forward_bot.infrastructure.telegram import telegram_client
 from forward_bot.infrastructure.logging import logger
+from forward_bot.infrastructure.cache.rule_cache import CacheHolder
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -15,21 +16,36 @@ async def liveness_check() -> dict[str, str]:
 
 
 @router.get("/ready")
-async def readiness_check(response: Response) -> dict[str, str]:
+async def readiness_check(response: Response) -> dict[str, Any]:
     """Readiness probe. Checks MongoDB connectivity to confirm app is ready to serve traffic."""
+    cache = CacheHolder.current
+    refreshed_at_str = cache.refreshed_at.isoformat() if cache.refreshed_at else None
+    cache_info = {
+        "version": cache.version,
+        "refreshed_at": refreshed_at_str,
+    }
     try:
         if mongo_client.db is not None:
             # Ping database to verify connection is active and reachable
             await mongo_client.db.command("ping")
-            return {"mongodb": "up"}
+            return {
+                "mongodb": "up",
+                "cache": cache_info
+            }
         else:
             logger.error("mongodb_ready_check_failed", error="Database connection not initialized")
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-            return {"mongodb": "down"}
+            return {
+                "mongodb": "down",
+                "cache": cache_info
+            }
     except Exception as e:
         logger.exception("mongodb_ready_check_failed", error=str(e))
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return {"mongodb": "down"}
+        return {
+            "mongodb": "down",
+            "cache": cache_info
+        }
 
 
 @router.get("/telegram")

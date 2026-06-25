@@ -1,28 +1,42 @@
+import { useState } from "react";
 import { Outlet } from "react-router-dom";
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { DegradedBanner } from "./DegradedBanner";
+import { Sheet } from "../shared/Sheet";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 export default function Layout() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Register Vim-style navigation keyboard shortcuts globally
+  useKeyboardShortcuts();
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Navigation placeholder */}
-      <nav className="bg-card border-b border-border px-4 py-3">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold">Forward Bot</h1>
-        </div>
-      </nav>
+    <div className="min-h-screen flex bg-background text-foreground">
+      {/* Persistent Left Sidebar - Hidden on mobile, shown on md and above */}
+      <Sidebar className="hidden md:flex w-64 flex-shrink-0" />
 
-      {/* Main content area */}
-      <main className="flex-1 px-4 py-6">
-        <div className="max-w-7xl mx-auto">
-          <Outlet />
-        </div>
-      </main>
+      {/* Mobile Drawer Navigation Sidebar */}
+      <Sheet isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)}>
+        <Sidebar className="border-r-0 p-0" onItemClick={() => setIsMobileMenuOpen(false)} />
+      </Sheet>
 
-      {/* Footer placeholder */}
-      <footer className="bg-card border-t border-border px-4 py-3 text-sm text-muted-foreground">
-        <div className="max-w-7xl mx-auto">
-          Forward Bot — self-hosted Telegram forwarding
-        </div>
-      </footer>
+      {/* Main Container Layout */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header TopBar */}
+        <TopBar onMenuToggle={() => setIsMobileMenuOpen(true)} />
+
+        {/* Global Degraded warning banner */}
+        <DegradedBanner />
+
+        {/* Main Content Pane */}
+        <main className="flex-grow overflow-y-auto px-4 py-6 md:px-8">
+          <div className="max-w-6xl mx-auto w-full">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

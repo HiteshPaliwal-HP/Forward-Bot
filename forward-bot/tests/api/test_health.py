@@ -58,7 +58,7 @@ async def test_readiness_endpoint_mongodb_up(app):
             response = await ac.get("/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"mongodb": "up"}
+    assert response.json() == {"mongodb": "up", "cache": {"version": 0, "refreshed_at": None}}
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ async def test_readiness_endpoint_mongodb_down(app):
             response = await ac.get("/health/ready")
 
     assert response.status_code == 503
-    assert response.json() == {"mongodb": "down"}
+    assert response.json() == {"mongodb": "down", "cache": {"version": 0, "refreshed_at": None}}
 
 
 @pytest.mark.asyncio
@@ -87,4 +87,4 @@ async def test_readiness_endpoint_mongodb_client_none(app):
             response = await ac.get("/health/ready")
 
     assert response.status_code == 503
-    assert response.json() == {"mongodb": "down"}
+    assert response.json() == {"mongodb": "down", "cache": {"version": 0, "refreshed_at": None}}
