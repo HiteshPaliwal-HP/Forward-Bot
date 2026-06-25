@@ -25,15 +25,25 @@ class SamplingStep:
         if persist and self.sampling_repository is not None:
             counter = await self.sampling_repository.increment_counter(rule.id)
         else:
-            # InMemory counters
+            # InMemory counters — acquire lock to guard concurrent read-modify-write
             counters = ctx.metadata.get("sampling_counters") if isinstance(ctx.metadata, dict) else None
             if counters is None or not isinstance(counters, dict):
                 counters = self._fallback_counters
-            
-            current_val = counters.get(rule.id, 0)
-            new_val = current_val + 1
-            counters[rule.id] = new_val
-            counter = new_val
+
+            lock = ctx.metadata.get("sampling_lock") if isinstance(ctx.metadata, dict) else None
+            if lock is not None:
+                async with lock:
+                    current_val = counters.get(rule.id, 0)
+                    new_val = current_val + 1
+                    counters[rule.id] = new_val
+                    counter = new_val
+            else:
+                # No lock provided (e.g. unit tests) — proceed without locking
+                current_val = counters.get(rule.id, 0)
+                new_val = current_val + 1
+                counters[rule.id] = new_val
+                counter = new_val
+
 
         if counter % rule.sampling.n != 0:
             return BlockedOutcome(reason="sampled_out")

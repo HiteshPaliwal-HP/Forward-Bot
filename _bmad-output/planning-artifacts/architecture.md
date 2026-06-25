@@ -804,6 +804,74 @@ BLOCK_REASONS = {
 
 ---
 
+**Pipeline Exception Isolation Contract** *(added Epic 4 retro — confirmed Epic 5)*
+
+The isolation model has three nested layers. A failure at any layer must not abort processing at a higher layer.
+
+**Layer 1 — Step-level (`apply()` boundary)**
+Every `PipelineStep.apply()` catches all exceptions internally and converts them to a `BlockedOutcome(reason="step_error")`. No exception may propagate out of `apply()`.
+
+```python
+# Canonical pattern for every PipelineStep:
+async def apply(self, ctx: PipelineContext) -> PipelineContext | BlockedOutcome:
+    try:
+        # ... step logic ...
+        return ctx
+    except Exception as e:
+        logger.error("step_error", step=self.name, error=str(e), ...)
+        return BlockedOutcome(reason="step_error")
+```
+
+**Layer 2 — Per-rule (`asyncio.gather` boundary)**
+The worker dispatches each matching rule as an independent `asyncio.Task`. All tasks are gathered with `return_exceptions=True` so one rule's unhandled exception (e.g. a Telegram delivery error that leaked past Layer 1) cannot cancel sibling rule tasks.
+
+```python
+# In TelegramWorker.process_event():
+tasks = [asyncio.create_task(_execute_and_log(rule)) for rule in matching_rules]
+if tasks:
+    await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+**Layer 3 — Propagation (`asyncio.gather` boundary)**
+Edit and delete propagation to multiple destination channels is also gathered with `return_exceptions=True`. Each destination channel's propagation runs in its own `copy_context().run()` to keep `correlation_id` and `structlog` context variables fully isolated between concurrent propagation tasks.
+
+```python
+# In TelegramWorker.process_edit_event() / process_delete_event():
+tasks = []
+for mapping in mappings:
+    ctx = contextvars.copy_context()           # strict contextvar isolation
+    tasks.append(asyncio.create_task(ctx.run(...)))
+await asyncio.gather(*tasks, return_exceptions=True)
+```
+
+**Sampling counter guard (`asyncio.Lock`)**
+`sampling_counters` is a single `dict` on the worker, shared across concurrent per-rule tasks via `metadata["sampling_counters"]`. To prevent silent under-counting during concurrent `asyncio.gather()` dispatch, the worker creates a single `asyncio.Lock` (`self._sampling_lock`) and passes it to each pipeline context via `metadata["sampling_lock"]`. `SamplingStep` acquires this lock before the read-modify-write on the counter.
+
+```python
+# worker.py: created once, passed in metadata
+self._sampling_lock = asyncio.Lock()
+metadata = {
+    "sampling_counters": self.sampling_counters,
+    "sampling_lock": self._sampling_lock,
+}
+
+# sampling.py: acquired before every counter mutation
+lock = ctx.metadata.get("sampling_lock")
+if lock is not None:
+    async with lock:
+        current_val = counters.get(rule.id, 0)
+        counters[rule.id] = current_val + 1
+        counter = current_val + 1
+```
+
+**Key rules for all agents:**
+- Never `raise` from inside `apply()` — always return `BlockedOutcome`
+- Always use `return_exceptions=True` in `asyncio.gather()` at the dispatch level
+- Always use `contextvars.copy_context().run(coro)` for concurrent propagation tasks
+- Always acquire `sampling_lock` before mutating `sampling_counters`
+
+
+
 ### Process Patterns
 
 **Error Handling — backend**

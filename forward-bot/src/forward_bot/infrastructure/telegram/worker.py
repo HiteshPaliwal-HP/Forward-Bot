@@ -31,6 +31,7 @@ class TelegramWorker:
         )
         self.joined_sources = set()  # Tracks telegram_ids (int) of joined sources
         self.sampling_counters = {}  # In-memory counters {rule_id: counter} for sampling
+        self._sampling_lock = asyncio.Lock()  # Guards concurrent read-modify-write on sampling_counters
         self._handler = None
 
     async def run(self) -> None:
@@ -254,6 +255,7 @@ class TelegramWorker:
                     "source_message_id": event.message.id,
                     "reply_to_msg_id": reply_to_msg_id,
                     "sampling_counters": self.sampling_counters,  # passed by reference
+                    "sampling_lock": self._sampling_lock,  # asyncio.Lock guards concurrent counter mutations
                 }
                 pipeline_context = PipelineContext(
                     text=text,
