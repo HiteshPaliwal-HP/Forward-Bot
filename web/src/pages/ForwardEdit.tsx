@@ -386,7 +386,7 @@ export default function ForwardEdit() {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full pb-16">
+    <div className="flex flex-col gap-5 max-w-4xl mx-auto w-full pb-16 select-none animate-fade-in">
       {/* Activation Banner */}
       {!isNewRule && ruleData && !ruleData.is_active && (
         <ActivationBanner 
@@ -397,28 +397,29 @@ export default function ForwardEdit() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border/60 pb-4 gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-3.5 gap-4">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
             {isNewRule ? "Create Forward" : "Edit Forward"}
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground">
             Configure rules, filters, attributes, and text modifications.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button onClick={() => navigate("/forwards")} variant="outline">
+        <div className="flex items-center gap-2">
+          <Button onClick={() => navigate("/forwards")} variant="outline" size="sm">
             Cancel
           </Button>
           <Button 
             onClick={handleSubmit} 
             disabled={createRuleMutation.isPending || updateRuleMutation.isPending}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1.5"
+            size="sm"
           >
             {(createRuleMutation.isPending || updateRuleMutation.isPending) ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
             )}
             <span>Save Rule</span>
           </Button>
@@ -426,7 +427,7 @@ export default function ForwardEdit() {
       </div>
 
       {/* Accordion Panels */}
-      <div className="flex flex-col gap-4 mt-2">
+      <div className="flex flex-col gap-3.5 mt-1">
         {/* PANEL 1: Basic Config */}
         <CollapsiblePanel 
           title="1. Basic Config" 

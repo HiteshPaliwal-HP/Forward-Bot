@@ -75,23 +75,23 @@ export default function Settings() {
     : "v0.1.0";
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl select-none">
+    <div className="flex flex-col gap-5 max-w-4xl select-none animate-fade-in pb-16">
       {/* Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground font-medium">
+      <div className="flex flex-col gap-0.5">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">Settings</h1>
+        <p className="text-xs text-muted-foreground font-medium">
           Manage system preferences, monitor system services, and control your current session.
         </p>
       </div>
 
       {/* Main Settings Body */}
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-5">
         
         {/* Theme Settings Card */}
-        <div className="bg-card border border-border rounded-xl p-6 shadow-2xs">
-          <div className="flex flex-col gap-1 mb-5">
-            <h2 className="text-lg font-bold text-foreground">Appearance</h2>
-            <p className="text-xs text-muted-foreground font-medium">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-premium">
+          <div className="flex flex-col gap-0.5 mb-4">
+            <h2 className="text-xs font-bold text-foreground uppercase tracking-wide">Appearance</h2>
+            <p className="text-[11px] text-muted-foreground font-medium">
               Choose your preferred interface color theme.
             </p>
           </div>
@@ -101,52 +101,52 @@ export default function Settings() {
             <button
               onClick={() => setTheme("system")}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "flex flex-col items-center justify-center p-3 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:scale-[0.98]",
                 theme === "system" 
-                  ? "bg-primary-foreground border-primary text-foreground font-bold shadow-3xs" 
-                  : "bg-muted-bg border-border text-muted-foreground hover:bg-muted/10 hover:text-foreground"
+                  ? "bg-muted border-border text-foreground font-bold shadow-2xs" 
+                  : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Monitor className="w-5 h-5" />
-              <span className="text-xs">System</span>
+              <Monitor className="w-4 h-4 text-muted-foreground/80" />
+              <span className="text-[11px] font-semibold">System</span>
             </button>
 
             {/* Light Option */}
             <button
               onClick={() => setTheme("light")}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "flex flex-col items-center justify-center p-3 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:scale-[0.98]",
                 theme === "light" 
-                  ? "bg-primary-foreground border-primary text-foreground font-bold shadow-3xs" 
-                  : "bg-muted-bg border-border text-muted-foreground hover:bg-muted/10 hover:text-foreground"
+                  ? "bg-muted border-border text-foreground font-bold shadow-2xs" 
+                  : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Sun className="w-5 h-5" />
-              <span className="text-xs">Light</span>
+              <Sun className="w-4 h-4 text-muted-foreground/80" />
+              <span className="text-[11px] font-semibold">Light</span>
             </button>
 
             {/* Dark Option */}
             <button
               onClick={() => setTheme("dark")}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "flex flex-col items-center justify-center p-3 rounded-lg border text-center cursor-pointer transition-all duration-200 gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 active:scale-[0.98]",
                 theme === "dark" 
-                  ? "bg-primary-foreground border-primary text-foreground font-bold shadow-3xs" 
-                  : "bg-muted-bg border-border text-muted-foreground hover:bg-muted/10 hover:text-foreground"
+                  ? "bg-muted border-border text-foreground font-bold shadow-2xs" 
+                  : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Moon className="w-5 h-5" />
-              <span className="text-xs">Dark</span>
+              <Moon className="w-4 h-4 text-muted-foreground/80" />
+              <span className="text-[11px] font-semibold">Dark</span>
             </button>
           </div>
         </div>
 
         {/* System Information Card */}
-        <div className="bg-card border border-border rounded-xl p-6 shadow-2xs">
-          <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-bold text-foreground">System Information</h2>
-              <p className="text-xs text-muted-foreground font-medium">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-premium">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-xs font-bold text-foreground uppercase tracking-wide">System Information</h2>
+              <p className="text-[11px] text-muted-foreground font-medium">
                 Live environment information for debugging and health auditing.
               </p>
             </div>
@@ -154,45 +154,45 @@ export default function Settings() {
               onClick={() => { refetchHealth(); refetchCache(); }}
               className="inline-flex items-center gap-1.5 text-xs text-primary font-bold hover:underline cursor-pointer select-none"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3 h-3" />
               <span>Refresh Status</span>
             </button>
           </div>
 
           <div className="divide-y divide-border">
             {/* Version Row */}
-            <div className="py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <Info className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Info className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-foreground">Service Version</span>
-                  <span className="text-xs text-muted-foreground">Currently deployed backend version</span>
+                  <span className="text-xs font-bold text-foreground">Service Version</span>
+                  <span className="text-[10px] text-muted-foreground">Currently deployed backend version</span>
                 </div>
               </div>
-              <span className="text-sm font-mono font-bold bg-muted px-2.5 py-1 rounded text-foreground">
+              <span className="text-xs font-mono font-bold bg-muted px-2 py-0.5 rounded-lg text-foreground border border-border">
                 {isCacheLoading ? "Loading..." : serviceVersion}
               </span>
             </div>
 
             {/* MongoDB Connection Row */}
-            <div className="py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <Database className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Database className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-foreground">Database Connectivity</span>
-                  <span className="text-xs text-muted-foreground">MongoDB replica set status</span>
+                  <span className="text-xs font-bold text-foreground">Database Connectivity</span>
+                  <span className="text-[10px] text-muted-foreground">MongoDB replica set status</span>
                 </div>
               </div>
               <div>
                 {isCacheLoading ? (
-                  <span className="text-sm text-muted-foreground font-semibold">Checking...</span>
+                  <span className="text-xs text-muted-foreground font-semibold">Checking...</span>
                 ) : mongoStatus === "up" ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-success-bg border border-success-border text-success-foreground">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-success-bg border border-success-border text-success-foreground">
                     <CheckCircle2 className="w-3 h-3 stroke-[2.5px]" />
                     <span>Connected</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-error-bg border border-error-border text-error">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-error-bg border border-error-border text-error">
                     <AlertCircle className="w-3 h-3 stroke-[2.5px]" />
                     <span>Disconnected</span>
                   </span>
@@ -201,27 +201,27 @@ export default function Settings() {
             </div>
 
             {/* Session TTL Row */}
-            <div className="py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-foreground">Session Lifetime</span>
-                  <span className="text-xs text-muted-foreground">Security cookie expiration threshold</span>
+                  <span className="text-xs font-bold text-foreground">Session Lifetime</span>
+                  <span className="text-[10px] text-muted-foreground">Security cookie expiration threshold</span>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-foreground">24 Hours (HttpOnly)</span>
+              <span className="text-xs font-semibold text-foreground">24 Hours (HttpOnly)</span>
             </div>
 
             {/* Session Uptime Row */}
-            <div className="py-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+            <div className="py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-foreground">Active Session Duration</span>
-                  <span className="text-xs text-muted-foreground">Time elapsed since application load</span>
+                  <span className="text-xs font-bold text-foreground">Active Session Duration</span>
+                  <span className="text-[10px] text-muted-foreground">Time elapsed since application load</span>
                 </div>
               </div>
-              <span className="text-sm font-mono font-bold text-foreground tabular-nums">
+              <span className="text-xs font-mono font-bold text-foreground tabular-nums bg-muted px-2 py-0.5 rounded-lg border border-border">
                 {sessionUptime}
               </span>
             </div>
@@ -229,25 +229,25 @@ export default function Settings() {
         </div>
 
         {/* Danger Zone / Session Management */}
-        <div className="bg-card border border-error-border/40 rounded-xl p-6 shadow-2xs">
-          <div className="flex flex-col gap-1 mb-5">
-            <h2 className="text-lg font-bold text-error">Session Management</h2>
-            <p className="text-xs text-muted-foreground font-medium">
+        <div className="bg-card border border-red-500/20 rounded-xl p-5 shadow-premium">
+          <div className="flex flex-col gap-0.5 mb-4">
+            <h2 className="text-xs font-bold text-red-500 uppercase tracking-wide">Session Management</h2>
+            <p className="text-[11px] text-muted-foreground font-medium">
               Terminate your active operator credentials session.
             </p>
           </div>
 
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-bold text-foreground">Sign Out</span>
-              <span className="text-xs text-muted-foreground">Clear HttpOnly browser credentials.</span>
+              <span className="text-xs font-bold text-foreground">Sign Out</span>
+              <span className="text-[10px] text-muted-foreground">Clear HttpOnly browser credentials.</span>
             </div>
             <button
               onClick={() => logoutMutation.mutate()}
               disabled={logoutMutation.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-error text-white rounded-md text-xs font-bold hover:bg-red-700 active:scale-[0.98] transition-all cursor-pointer shadow-3xs disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-750 text-white rounded-lg text-xs font-semibold hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
               <span>{logoutMutation.isPending ? "Logging out..." : "Log Out"}</span>
             </button>
           </div>

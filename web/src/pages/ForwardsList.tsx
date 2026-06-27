@@ -226,45 +226,45 @@ export default function ForwardsList() {
   const totalPages = Math.ceil(totalItems / pageSize);
 
   return (
-    <div className="flex flex-col gap-6 select-none relative pb-20">
+    <div className="flex flex-col gap-5 select-none relative pb-16">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Forwards</h1>
-          <p className="text-sm text-muted-foreground font-medium">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Forwards</h1>
+          <p className="text-xs text-muted-foreground font-medium">
             Manage forwarding rules configured to route messages across Telegram channels.
           </p>
         </div>
         <Link 
           to="/forwards/new"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-lg text-sm hover:bg-color-active-hover shadow active:scale-[0.98] transition-all cursor-pointer select-none"
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground font-semibold rounded-lg text-xs hover:bg-color-active-hover shadow-sm active:scale-[0.98] transition-all cursor-pointer select-none"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>New Forward</span>
         </Link>
       </div>
-
+ 
       {/* Rules list container */}
-      <div className="bg-card border border-border rounded-xl shadow-2xs overflow-hidden">
+      <div className="bg-card border border-border rounded-xl shadow-premium overflow-hidden">
         {isRulesLoading ? (
           <div className="p-8 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <span className="text-sm font-semibold">Loading forwarding rules...</span>
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="text-xs font-semibold">Loading forwarding rules...</span>
           </div>
         ) : isRulesError ? (
           <div className="p-8 flex flex-col items-center justify-center gap-3 border border-error-border bg-error-bg text-error text-center">
-            <span className="text-sm font-bold">Failed to load forwarding rules</span>
+            <span className="text-xs font-bold">Failed to load forwarding rules</span>
             <button 
               onClick={() => refetchRules()}
-              className="px-4 py-1.5 bg-error text-white rounded-md text-xs font-bold hover:bg-red-700 active:scale-[0.98] transition-all cursor-pointer shadow-3xs"
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-750 text-white rounded-lg text-xs font-semibold active:scale-[0.98] transition-all cursor-pointer shadow-3xs"
             >
               Retry
             </button>
           </div>
         ) : !rulesData?.items || rulesData.items.length === 0 ? (
           <div className="p-16 text-center border-dashed border border-border rounded-xl">
-            <p className="text-sm font-semibold text-muted-foreground">No forwarding rules configured.</p>
-            <p className="text-xs text-muted-foreground mt-1.5 opacity-80">
+            <p className="text-xs font-semibold text-muted-foreground">No forwarding rules configured.</p>
+            <p className="text-[11px] text-muted-foreground mt-1 opacity-80">
               Create a forwarding rule to start message processing.
             </p>
             <Link 
@@ -279,9 +279,9 @@ export default function ForwardsList() {
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
-                <tr className="border-b border-border bg-muted-bg text-xs font-bold text-muted-foreground uppercase tracking-wider select-none">
+                <tr className="border-b border-border bg-muted/30 text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
                   {/* Bulk selection checkbox */}
-                  <th className="py-3 px-4 w-12 text-center">
+                  <th className="py-2.5 px-4 w-12 text-center">
                     <input 
                       type="checkbox"
                       checked={isAllSelected}
@@ -289,22 +289,22 @@ export default function ForwardsList() {
                         if (el) el.indeterminate = isSomeSelected;
                       }}
                       onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                      className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
                     />
                   </th>
-                  <th className="py-3 px-4">Source</th>
-                  <th className="py-3 px-4">Destination</th>
-                  <th className="py-3 px-4 w-28">Status</th>
-                  <th className="py-3 px-4 w-36">Active Filters</th>
-                  <th className="py-3 px-4 w-32 text-center">Actions</th>
+                  <th className="py-2.5 px-4">Source</th>
+                  <th className="py-2.5 px-4">Destination</th>
+                  <th className="py-2.5 px-4 w-28">Status</th>
+                  <th className="py-2.5 px-4 w-36">Active Filters</th>
+                  <th className="py-2.5 px-4 w-32 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border text-sm font-medium">
+              <tbody className="divide-y divide-border text-xs font-medium">
                 {rulesData.items.map((rule) => {
                   const sourceName = isSourcesLoading 
                     ? "Loading..." 
                     : sourcesMap.get(rule.source_id) || rule.source_id;
-
+ 
                   // Build config for filter icon row
                   const filterConfig = {
                     time_window: rule.time_window || undefined,
@@ -313,46 +313,46 @@ export default function ForwardsList() {
                     block_keywords: rule.block_keywords || undefined,
                     allow_keywords: rule.allow_keywords || undefined,
                   };
-
+ 
                   return (
                     <tr 
                       key={rule.id}
                       className={cn(
-                        "hover:bg-muted-bg/50 transition-colors select-none",
+                        "hover:bg-muted/40 transition-colors select-none",
                         selectedIds.has(rule.id) && "bg-primary/5 hover:bg-primary/10"
                       )}
                     >
                       {/* Checkbox */}
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-3 px-4 text-center">
                         <input 
                           type="checkbox"
                           checked={selectedIds.has(rule.id)}
                           onChange={() => handleSelectRow(rule.id)}
-                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                          className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
                         />
                       </td>
                       {/* Source */}
-                      <td className="py-3.5 px-4 text-foreground font-semibold max-w-[200px] truncate">
+                      <td className="py-3 px-4 text-foreground font-semibold max-w-[200px] truncate">
                         {sourceName}
                       </td>
                       {/* Destination */}
-                      <td className="py-3.5 px-4 text-muted-foreground max-w-[200px] truncate">
+                      <td className="py-3 px-4 text-muted-foreground max-w-[200px] truncate">
                         {rule.destination_channel}
                       </td>
                       {/* Status */}
-                      <td className="py-3.5 px-4 flex items-center gap-2">
+                      <td className="py-3 px-4 flex items-center gap-2">
                         <button
                           onClick={() => handleToggleActive(rule)}
                           disabled={toggleMutation.isPending}
                           className={cn(
-                            "w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring select-none",
+                            "w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 select-none",
                             rule.is_active ? "bg-primary" : "bg-muted"
                           )}
                           aria-label={`Toggle active state. Current: ${rule.is_active ? "Active" : "Inactive"}`}
                         >
                           <div 
                             className={cn(
-                              "w-4 h-4 rounded-full bg-white shadow-sm transition-transform",
+                              "w-3 h-3 rounded-full bg-white shadow-sm transition-transform",
                               rule.is_active ? "translate-x-4" : "translate-x-0"
                             )}
                           />
@@ -360,18 +360,18 @@ export default function ForwardsList() {
                         <StatusPill status={rule.is_active ? "active" : "inactive"} />
                       </td>
                       {/* Active Filters Icons */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <FilterIconRow config={filterConfig} />
                       </td>
                       {/* Actions */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <div className="flex items-center justify-center gap-2">
                           <Link
                             to={`/forwards/${rule.id}/edit`}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted-bg transition-colors"
+                            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                             title="Edit Forwarding Rule"
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-3.5 h-3.5" />
                           </Link>
                           <button
                             onClick={() => {
@@ -379,10 +379,10 @@ export default function ForwardsList() {
                                 deleteMutation.mutate(rule.id);
                               }
                             }}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-color-error hover:bg-error-bg/60 transition-colors cursor-pointer"
+                            className="p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                             title="Delete Forwarding Rule"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -394,70 +394,70 @@ export default function ForwardsList() {
           </div>
         )}
       </div>
-
+ 
       {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border/60 pt-4 px-2">
-          <span className="text-xs font-semibold text-muted-foreground">
+          <span className="text-[11px] font-semibold text-muted-foreground">
             Showing Page <span className="text-foreground">{page}</span> of <span className="text-foreground">{totalPages}</span> ({totalItems} total rules)
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed select-none transition-colors"
+              className="p-1 border border-border rounded-lg hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed select-none transition-colors"
               title="Previous Page"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed select-none transition-colors"
+              className="p-1 border border-border rounded-lg hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed select-none transition-colors"
               title="Next Page"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       )}
-
+ 
       {/* Sticky Sliding Bulk Action Bar */}
       <div 
         className={cn(
-          "fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/90 backdrop-blur-md border border-border shadow-xl px-6 py-3 rounded-full flex items-center gap-6 transition-all duration-300 transform",
-          selectedIds.size > 0 ? "translate-y-0 opacity-100" : "translate-y-24 opacity-0 pointer-events-none"
+          "fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/90 backdrop-blur-md border border-border shadow-premium px-5 py-2.5 rounded-xl flex items-center gap-5 transition-all duration-300 transform",
+          selectedIds.size > 0 ? "translate-y-0 opacity-100 animate-fade-in" : "translate-y-24 opacity-0 pointer-events-none"
         )}
       >
-        <span className="text-xs font-bold text-foreground">
+        <span className="text-xs font-semibold text-foreground">
           {selectedIds.size} selected
         </span>
         <div className="h-4 w-px bg-border" />
         <div className="flex items-center gap-2">
           <button
             onClick={() => triggerBulkAction("enable")}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-success-bg text-success-foreground border border-success-border rounded-full text-xs font-bold hover:bg-success-border active:scale-[0.98] transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-success-bg text-success-foreground border border-success-border rounded-lg text-xs font-semibold hover:bg-success-border/50 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
+            <Play className="w-3 h-3 fill-current animate-pulse" />
             <span>Enable</span>
           </button>
           <button
             onClick={() => triggerBulkAction("disable")}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-warning-bg text-warning-foreground border border-warning-border rounded-full text-xs font-bold hover:bg-warning-border active:scale-[0.98] transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-warning-bg text-warning-foreground border border-warning-border rounded-lg text-xs font-semibold hover:bg-warning-border/50 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Square className="w-3.5 h-3.5 fill-current" />
+            <Square className="w-3 h-3 fill-current" />
             <span>Disable</span>
           </button>
           <button
             onClick={() => triggerBulkAction("delete")}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-error-bg text-degraded-foreground border border-error-border rounded-full text-xs font-bold hover:bg-error-border active:scale-[0.98] transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-error-bg text-degraded-foreground border border-error-border rounded-lg text-xs font-semibold hover:bg-error-border/50 active:scale-[0.98] transition-all cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3 h-3" />
             <span>Delete</span>
           </button>
         </div>
       </div>
-
+ 
       {/* Custom AlertDialog for Bulk Actions */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>

@@ -8,57 +8,57 @@ sources:
   - ../../prds/prd-forward-bot-2026-05-31/addendum.md
 colors:
   # Brand overrides on top of shadcn defaults. Unlisted tokens (popover, card,
-  # input, ring, etc.) inherit from shadcn's stone/zinc palette.
+  # input, ring, etc.) inherit from shadcn's zinc/slate scale.
   # ---- LIGHT ----
-  background: '#FAFAF9'
-  background-muted: '#F4F4F2'
-  border: '#E7E5E0'
-  foreground: '#1C1917'
-  foreground-muted: '#78716C'
-  accent: '#16A34A'
-  accent-hover: '#15803D'
+  background: '#fafafa'
+  background-muted: '#f4f4f5'
+  border: '#e4e4e7'
+  foreground: '#09090b'
+  foreground-muted: '#71717a'
+  accent: '#10b981'
+  accent-hover: '#059669'
   accent-foreground: '#FFFFFF'
-  state-success: '#16A34A'
-  state-success-bg: '#F0FDF4'
-  state-success-border: '#BBF7D0'
-  state-success-foreground: '#15803D'
-  state-warning: '#D97706'
-  state-warning-bg: '#FEF3C7'
-  state-warning-border: '#FDE68A'
-  state-warning-foreground: '#92400E'
-  state-error: '#DC2626'
-  state-error-bg: '#FEF2F2'
-  state-error-border: '#FECACA'
-  state-degraded-bg: '#FEF2F2'
-  state-degraded-border: '#FCA5A5'
-  state-degraded-foreground: '#991B1B'
-  state-muted: '#A8A29E'
-  state-muted-bg: '#F4F4F2'
+  state-success: '#10b981'
+  state-success-bg: '#ecfdf5'
+  state-success-border: '#a7f3d0'
+  state-success-foreground: '#047857'
+  state-warning: '#f59e0b'
+  state-warning-bg: '#fef3c7'
+  state-warning-border: '#fde68a'
+  state-warning-foreground: '#b45309'
+  state-error: '#ef4444'
+  state-error-bg: '#fef2f2'
+  state-error-border: '#fecaca'
+  state-degraded-bg: '#fef2f2'
+  state-degraded-border: '#fca5a5'
+  state-degraded-foreground: '#991b1b'
+  state-muted: '#71717a'
+  state-muted-bg: '#f4f4f5'
   # ---- DARK ----
-  background-dark: '#14130F'
-  background-muted-dark: '#1C1B16'
-  border-dark: '#2A2823'
-  foreground-dark: '#E7E5E0'
-  foreground-muted-dark: '#A8A29E'
-  accent-dark: '#22C55E'
-  accent-hover-dark: '#16A34A'
-  accent-foreground-dark: '#052E16'
-  state-success-dark: '#22C55E'
-  state-success-bg-dark: 'rgba(34,197,94,0.12)'
-  state-success-border-dark: 'rgba(34,197,94,0.35)'
-  state-success-foreground-dark: '#4ADE80'
-  state-warning-dark: '#F59E0B'
+  background-dark: '#09090b'
+  background-muted-dark: '#18181b'
+  border-dark: '#27272a'
+  foreground-dark: '#f4f4f5'
+  foreground-muted-dark: '#a1a1aa'
+  accent-dark: '#10b981'
+  accent-hover-dark: '#059669'
+  accent-foreground-dark: '#022c22'
+  state-success-dark: '#10b981'
+  state-success-bg-dark: 'rgba(16,185,129,0.12)'
+  state-success-border-dark: 'rgba(16,185,129,0.35)'
+  state-success-foreground-dark: '#34d399'
+  state-warning-dark: '#f59e0b'
   state-warning-bg-dark: 'rgba(245,158,11,0.14)'
   state-warning-border-dark: 'rgba(245,158,11,0.45)'
-  state-warning-foreground-dark: '#FCD34D'
-  state-error-dark: '#EF4444'
+  state-warning-foreground-dark: '#fcd34d'
+  state-error-dark: '#ef4444'
   state-error-bg-dark: 'rgba(239,68,68,0.12)'
   state-error-border-dark: 'rgba(239,68,68,0.35)'
   state-degraded-bg-dark: 'rgba(239,68,68,0.14)'
   state-degraded-border-dark: 'rgba(239,68,68,0.45)'
-  state-degraded-foreground-dark: '#FCA5A5'
-  state-muted-dark: '#78716C'
-  state-muted-bg-dark: '#1C1B16'
+  state-degraded-foreground-dark: '#fca5a5'
+  state-muted-dark: '#71717a'
+  state-muted-bg-dark: '#18181b'
 typography:
   # All roles inherit shadcn's default sans (Geist or system-ui) at shadcn's
   # default ramp. Only `mono` is named because log rows and correlation IDs
@@ -140,25 +140,25 @@ components:
 
 Forward Bot is a self-hosted Telegram forwarding worker with an operator dashboard. The product is *infrastructure that happens to have a UI* — a background worker plus the surfaces you need to configure, observe, and verify it. The persona is a single operator running one instance for personal use; the register is operator-tool, not consumer app.
 
-The visual posture: **pragmatic, not glossy.** Warm-stone neutrals so long config sessions don't fatigue, a single signal-green accent that means *the pipeline is alive*, terse type, dense-but-comfortable spacing. Brand discipline is "shadcn/ui defaults are correct" — Forward Bot inherits the shadcn surface wholesale and overrides only what the brand layer demands. Both light and dark are first-class (system-follow with manual toggle in Settings); the dark surface is where the operator will spend most evenings.
+The visual posture: **premium, clean, and minimal.** Modern zinc/slate neutrals resemble high-end SaaS products like Stripe, Vercel, and Linear. A signature emerald green accent signifies *the pipeline is active*, alongside crisp sans typography and dense-but-comfortable spacing. Brand discipline is "shadcn/ui defaults are correct" — Forward Bot inherits the shadcn structure and overrides only what the premium brand layer demands. Both light and dark themes are first-class (system-follow with manual toggle in Settings); the dark surface is structured with distinct layered elevations for maximum readability.
 
 The product earns trust by *proving the pipeline runs* — Logs is not a diagnostic afterthought, it is the verification surface. The visual language must make a forwarded event read unmistakably differently from a blocked one, because watching that distinction change in real time is how the operator confirms a fix landed.
 
 ## Colors
 
-The palette is warm-stone neutrals plus Forwarding Green plus three state colors. Every other token inherits from shadcn.
+The palette is zinc/slate neutrals plus Forwarding Green plus three state colors. Every other token inherits from shadcn.
 
-- **Background / surface (`#FAFAF9` light / `#14130F` dark)** is warm stone, not cold zinc. Long config sessions on this surface stay comfortable; the warmth keeps the chrome from feeling clinical. Border and muted backgrounds (`#E7E5E0` / `#F4F4F2` light, `#2A2823` / `#1C1B16` dark) form a low-contrast structural grid — chrome should recede.
-- **Forwarding Green — accent (`#16A34A` light / `#22C55E` dark)** is the brand color and the "active pipeline" signal. Used on: primary buttons (`{components.button-primary}`), toggle-ON state (`{components.toggle-on}`), active filter icons (`{components.filter-icon-active}`), active sidebar nav, link underlines. Hover/active is `accent-hover` (a half-step darker).
-- **State Success (`#16A34A` light / `#22C55E` dark)** — same hue family as accent but expressed differently. Success **never** appears as a solid fill on a CTA; it appears as a **tinted pill** (`{colors.state-success-bg}` background with `{colors.state-success-foreground}` text and `{colors.state-success-border}` border) or as the **left-border accent color on a log row**. This separation is load-bearing — see Do's-and-Don'ts.
-- **State Warning (`#D97706` light / `#F59E0B` dark)** — reserved for warnings (cache-refresh pending, validation soft warnings). Not used on any primary surface.
-- **State Error (`#DC2626` light / `#EF4444` dark)** — destructive confirmations, validation errors, `telegram_rejected` log rows, `destination_unreachable` log rows. Distinguished from `state-degraded` by usage scope: error = per-row / per-field; degraded = global system condition.
-- **State Degraded (light `#FEF2F2` bg / `#991B1B` text; dark `rgba(239,68,68,0.14)` bg / `#FCA5A5` text)** — exclusively the global banner shown when Telegram is disconnected. A distinct red tone from `state-error` so the operator learns to read the banner as "the whole system is degraded" rather than "one thing failed."
-- **State Muted (`#A8A29E` light / `#78716C` dark)** — filter-blocked log rows (`outside_time_window`, `sampled_out`, `blocked_keyword`, `media_type_filtered`). Muted means *not an error, just suppressed*.
+- **Background / surface (`#fafafa` light / `#09090b` dark)** is a professional zinc/slate scale. Card and panel surfaces (`#ffffff` light, `#121214` dark) form elevated layers. Border and muted backgrounds (`#e4e4e7` / `#f4f4f5` light, `#27272a` / `#18181b` dark) create clean structural grids.
+- **Forwarding Green — accent (`#10b981` light / `#10b981` dark)** is the brand color and the "active pipeline" signal. Used on: primary buttons (`{components.button-primary}`), toggle-ON state (`{components.toggle-on}`), active filter icons (`{components.filter-icon-active}`), active sidebar nav, link underlines. Hover/active is `accent-hover` (a half-step darker).
+- **State Success (`#10b981` light / `#10b981` dark)** — same hue family as accent but expressed differently. Success **never** appears as a solid fill on a CTA; it appears as a **tinted pill** (`{colors.state-success-bg}` background with `{colors.state-success-foreground}` text and `{colors.state-success-border}` border) or as the **left-border accent color on a log row**. This separation is load-bearing — see Do's-and-Don'ts.
+- **State Warning (`#f59e0b` light / `#f59e0b` dark)** — reserved for warnings (cache-refresh pending, validation soft warnings). Not used on any primary surface.
+- **State Error (`#ef4444` light / `#ef4444` dark)** — destructive confirmations, validation errors, `telegram_rejected` log rows, `destination_unreachable` log rows. Distinguished from `state-degraded` by usage scope: error = per-row / per-field; degraded = global system condition.
+- **State Degraded (light `#fef2f2` bg / `#991b1b` text; dark `rgba(239,68,68,0.14)` bg / `#fca5a5` text)** — exclusively the global banner shown when Telegram is disconnected. A distinct red tone from `state-error` so the operator learns to read the banner as "the whole system is degraded" rather than "one thing failed."
+- **State Muted (`#71717a` light / `#71717a` dark)** — filter-blocked log rows (`outside_time_window`, `sampled_out`, `blocked_keyword`, `media_type_filtered`). Muted means *not an error, just suppressed*.
 
 All foreground/background pairs verified for WCAG AA contrast in both modes. The light/dark token pairs share the same semantic role; consumers should select via the active theme.
 
-Visual reference: [mockups/color-themes.html](mockups/color-themes.html) shows the chosen variation (Forwarding Green on warm stone, variation 2) alongside the rejected alternatives — kept for audit trail.
+Visual reference: [mockups/color-themes.html](mockups/color-themes.html) shows the chosen variation (Forwarding Green on zinc/slate, variation 2) alongside the rejected alternatives — kept for audit trail.
 
 ## Typography
 

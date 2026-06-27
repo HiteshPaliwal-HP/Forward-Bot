@@ -188,38 +188,36 @@ export default function SourceEdit() {
         </Link>
       </div>
     );
-  }
-
-  return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto pb-20 select-none">
+  }  return (
+    <div className="flex flex-col gap-5 max-w-2xl mx-auto pb-16 select-none animate-fade-in">
       {/* Back link & Title */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
         <Link
           to="/sources"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-bold transition-colors w-fit"
+          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground font-semibold transition-colors w-fit"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3 h-3" />
           <span>Back to Sources</span>
         </Link>
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">
           {isNewSource ? "Register Source" : "Edit Source"}
         </h1>
       </div>
-
+ 
       {isLoadingData ? (
-        <div className="bg-card border border-border rounded-xl p-8 shadow-2xs flex flex-col items-center justify-center gap-4 text-muted-foreground min-h-[300px]">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <span className="text-sm font-semibold">Loading source configurations...</span>
+        <div className="bg-card border border-border rounded-xl p-8 shadow-premium flex flex-col items-center justify-center gap-4 text-muted-foreground min-h-[250px]">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="text-xs font-semibold">Loading source configurations...</span>
         </div>
       ) : (
         <form
           onSubmit={handleSubmit}
-          className="bg-card border border-border rounded-xl p-6 shadow-2xs space-y-6"
+          className="bg-card border border-border rounded-xl p-5 shadow-premium space-y-5"
         >
           {/* Telegram Reference (New Mode Only) */}
           {isNewSource ? (
-            <div className="space-y-2">
-              <label htmlFor="telegram_reference" className="text-sm font-bold text-foreground">
+            <div className="space-y-1.5">
+              <label htmlFor="telegram_reference" className="text-xs font-bold text-foreground uppercase tracking-wide">
                 Telegram Handle or Channel ID
               </label>
               <input
@@ -230,31 +228,31 @@ export default function SourceEdit() {
                 placeholder="e.g. @telegram_channel or -10012345678"
                 disabled={isSaving}
                 className={cn(
-                  "w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all",
-                  errors.telegram_reference && "border-color-error focus:ring-color-error"
+                  "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
+                  errors.telegram_reference && "border-red-500 focus:ring-red-500/20"
                 )}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-[11px] text-muted-foreground leading-normal">
                 Provide either the Telegram username starting with '@', or the unique numeric Telegram ID (typically starts with '-100').
               </p>
               {errors.telegram_reference && (
-                <p className="text-xs text-color-error font-medium">{errors.telegram_reference}</p>
+                <p className="text-xs text-red-500 font-semibold">{errors.telegram_reference}</p>
               )}
             </div>
           ) : (
             // Read-Only Reference in Edit Mode
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-foreground">Telegram Reference</label>
-              <div className="px-3.5 py-2 border border-border bg-muted-bg/60 rounded-md text-sm font-mono text-muted-foreground select-all">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground uppercase tracking-wide">Telegram Reference</label>
+              <div className="h-9 px-3 flex items-center border border-border bg-muted/30 rounded-lg text-xs font-mono text-muted-foreground select-all">
                 {telegramUsername ? `@${telegramUsername}` : resolvedId || "—"}
               </div>
             </div>
           )}
-
+ 
           {/* Display Name */}
-          <div className="space-y-2">
-            <label htmlFor="display_name" className="text-sm font-bold text-foreground">
+          <div className="space-y-1.5">
+            <label htmlFor="display_name" className="text-xs font-bold text-foreground uppercase tracking-wide">
               Display Name
             </label>
             <input
@@ -265,28 +263,28 @@ export default function SourceEdit() {
               placeholder="e.g. Tech News Feed"
               disabled={isSaving}
               className={cn(
-                "w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all",
-                errors.display_name && "border-color-error focus:ring-color-error"
+                "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
+                errors.display_name && "border-red-500 focus:ring-red-500/20"
               )}
             />
             {errors.display_name && (
-              <p className="text-xs text-color-error font-medium">{errors.display_name}</p>
+              <p className="text-xs text-red-500 font-semibold">{errors.display_name}</p>
             )}
-
+ 
             {/* Resolved Telegram ID echo */}
             {resolvedId !== null && (
-              <p className="text-xs text-muted-foreground font-semibold mt-1">
+              <p className="text-[11px] text-muted-foreground font-semibold mt-1">
                 Resolved ID: <span className="font-mono text-foreground">{resolvedId}</span>
               </p>
             )}
           </div>
-
+ 
           {/* Type radio button (Edit Mode Only) */}
           {!isNewSource && (
-            <div className="space-y-2.5">
-              <span className="text-sm font-bold text-foreground block">Source Type</span>
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-foreground block uppercase tracking-wide">Source Type</span>
               <div className="flex items-center gap-6">
-                <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-semibold text-foreground">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
                   <input
                     type="radio"
                     name="type"
@@ -294,11 +292,11 @@ export default function SourceEdit() {
                     checked={type === "channel"}
                     onChange={() => setType("channel")}
                     disabled={isSaving}
-                    className="w-4 h-4 border-border text-primary focus:ring-primary"
+                    className="w-4 h-4 border-border text-primary focus:ring-primary/20"
                   />
                   <span>Channel</span>
                 </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-semibold text-foreground">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
                   <input
                     type="radio"
                     name="type"
@@ -306,18 +304,18 @@ export default function SourceEdit() {
                     checked={type === "group"}
                     onChange={() => setType("group")}
                     disabled={isSaving}
-                    className="w-4 h-4 border-border text-primary focus:ring-primary"
+                    className="w-4 h-4 border-border text-primary focus:ring-primary/20"
                   />
                   <span>Group</span>
                 </label>
               </div>
-              {errors.type && <p className="text-xs text-color-error font-medium">{errors.type}</p>}
+              {errors.type && <p className="text-xs text-red-500 font-semibold">{errors.type}</p>}
             </div>
           )}
-
+ 
           {/* Folder dropdown */}
-          <div className="space-y-2">
-            <label htmlFor="folder_id" className="text-sm font-bold text-foreground">
+          <div className="space-y-1.5">
+            <label htmlFor="folder_id" className="text-xs font-bold text-foreground uppercase tracking-wide">
               Folder Assignment
             </label>
             {isFoldersLoading ? (
@@ -331,7 +329,7 @@ export default function SourceEdit() {
                 value={folderId || ""}
                 onChange={(e) => setFolderId(e.target.value === "" ? null : e.target.value)}
                 disabled={isSaving}
-                className="w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all cursor-pointer"
+                className="w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
               >
                 <option value="">None (Ungrouped)</option>
                 {foldersData?.map((f) => (
@@ -342,29 +340,30 @@ export default function SourceEdit() {
               </select>
             )}
             {errors.folder_id && (
-              <p className="text-xs text-color-error font-medium">{errors.folder_id}</p>
+              <p className="text-xs text-red-500 font-semibold">{errors.folder_id}</p>
             )}
           </div>
-
+ 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/60">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
             <Button
               type="button"
               variant="outline"
               onClick={() => navigate("/sources")}
               disabled={isSaving}
+              size="sm"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving}>
+            <Button type="submit" disabled={isSaving} size="sm">
               {isSaving ? (
                 <span className="flex items-center gap-1.5 animate-fade-in">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   Saving...
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                   <span>{isNewSource ? "Register Source" : "Save Changes"}</span>
                 </span>
               )}
