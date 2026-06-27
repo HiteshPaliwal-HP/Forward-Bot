@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { sourcesApi, type SourceItem } from "@/api/sources";
 import { foldersApi, type FolderItem } from "@/api/folders";
+import { telegramApi } from "@/api/telegram";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { Button } from "@/components/shared/Button";
@@ -29,9 +30,31 @@ export default function SourceEdit() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
   const [resolvedId, setResolvedId] = useState<number | null>(null);
+  
+  // Selection vs manual input mode for Telegram Reference
+  const [inputMode, setInputMode] = useState<"select" | "manual">("manual");
 
   // Field validation states (inline errors)
   const [errors, setErrors] = useState<ValidationErrors>({});
+
+  // Fetch dialogs from Telegram client
+  const { data: tgDialogsData, isLoading: isTgDialogsLoading } = useQuery({
+    queryKey: queryKeys.telegram.dialogs(),
+    queryFn: () => telegramApi.fetchDialogs(),
+    enabled: isNewSource,
+    staleTime: 30_000,
+  });
+
+  // Automatically update inputMode to 'select' if Telegram client is connected
+  useEffect(() => {
+    if (tgDialogsData) {
+      if (tgDialogsData.connected) {
+        setInputMode("select");
+      } else {
+        setInputMode("manual");
+      }
+    }
+  }, [tgDialogsData]);
 
   // Fetch folders for dropdown selection
   const { data: foldersData, isLoading: isFoldersLoading } = useQuery<FolderItem[]>({
@@ -216,28 +239,108 @@ export default function SourceEdit() {
         >
           {/* Telegram Reference (New Mode Only) */}
           {isNewSource ? (
-            <div className="space-y-1.5">
-              <label htmlFor="telegram_reference" className="text-xs font-bold text-foreground uppercase tracking-wide">
-                Telegram Handle or Channel ID
-              </label>
-              <input
-                type="text"
-                id="telegram_reference"
-                value={telegramReference}
-                onChange={(e) => setTelegramReference(e.target.value)}
-                placeholder="e.g. @telegram_channel or -10012345678"
-                disabled={isSaving}
-                className={cn(
-                  "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
-                  errors.telegram_reference && "border-red-500 focus:ring-red-500/20"
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wide">
+                  Telegram Source Reference
+                </label>
+                {tgDialogsData?.connected && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("select")}
+                      className={cn(
+                        "px-2.5 py-1 text-[10px] font-semibold rounded-lg border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        inputMode === "select"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Select from Account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("manual")}
+                      className={cn(
+                        "px-2.5 py-1 text-[10px] font-semibold rounded-lg border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        inputMode === "manual"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Enter Manually
+                    </button>
+                  </div>
                 )}
-                autoFocus
-              />
-              <p className="text-[11px] text-muted-foreground leading-normal">
-                Provide either the Telegram username starting with '@', or the unique numeric Telegram ID (typically starts with '-100').
-              </p>
+              </div>
+
+              {inputMode === "select" && tgDialogsData?.connected ? (
+                <div className="space-y-1.5 animate-fade-in">
+                  {isTgDialogsLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>Loading dialogs...</span>
+                    </div>
+                  ) : (
+                    <select
+                      id="telegram_select"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const dialog = tgDialogsData.dialogs.find((d) => d.id === val);
+                          if (dialog) {
+                            setTelegramReference(dialog.username ? `@${dialog.username}` : dialog.id);
+                            setDisplayName(dialog.name);
+                          }
+                        } else {
+                          setTelegramReference("");
+                        }
+                      }}
+                      disabled={isSaving}
+                      className="w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
+                    >
+                      <option value="">Select a channel or group...</option>
+                      {tgDialogsData.dialogs.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} {d.username ? `(@${d.username})` : `(ID: ${d.id})`} — {d.is_channel ? "Channel" : "Group"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Select a channel or group linked to your logged-in Telegram account.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 animate-fade-in">
+                  <input
+                    type="text"
+                    id="telegram_reference"
+                    value={telegramReference}
+                    onChange={(e) => setTelegramReference(e.target.value)}
+                    placeholder="e.g. @telegram_channel or -10012345678"
+                    disabled={isSaving}
+                    className={cn(
+                      "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
+                      errors.telegram_reference && "border-red-500 focus:ring-red-500/20"
+                    )}
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Provide either the Telegram username starting with '@', or the unique numeric Telegram ID (typically starts with '-100').
+                  </p>
+                </div>
+              )}
+
+              {/* Offline/degraded indicator */}
+              {tgDialogsData && !tgDialogsData.connected && (
+                <div className="p-2.5 rounded-lg border border-warning-border bg-warning-bg/10 text-warning-foreground text-[10px] font-medium leading-normal">
+                  ⚠️ Live Telegram connection is not active. Dialogue listing auto-selection is unavailable. Please enter reference handle or ID manually.
+                </div>
+              )}
+
               {errors.telegram_reference && (
-                <p className="text-xs text-red-500 font-semibold">{errors.telegram_reference}</p>
+                <p className="text-xs text-red-500 font-semibold mt-1">{errors.telegram_reference}</p>
               )}
             </div>
           ) : (

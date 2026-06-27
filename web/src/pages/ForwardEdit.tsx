@@ -9,6 +9,7 @@ import {
 } from "@/api/rules";
 import { sourcesApi } from "@/api/sources";
 import { mediaApi } from "@/api/media";
+import { telegramApi } from "@/api/telegram";
 import { queryKeys } from "@/lib/queryKeys";
 import { CollapsiblePanel, ActivationBanner, Button } from "@/components/shared";
 import { toast } from "sonner";
@@ -90,6 +91,26 @@ export default function ForwardEdit() {
     enabled: !isNewRule,
     staleTime: 0,
   });
+
+  // Fetch dialogs from Telegram client for destination selection
+  const { data: tgDialogsData, isLoading: isTgDialogsLoading } = useQuery({
+    queryKey: queryKeys.telegram.dialogs(),
+    queryFn: () => telegramApi.fetchDialogs(),
+    staleTime: 30_000,
+  });
+
+  // Toggle mode for destination channel input
+  const [destInputMode, setDestInputMode] = useState<"select" | "manual">("manual");
+
+  useEffect(() => {
+    if (tgDialogsData) {
+      if (tgDialogsData.connected) {
+        setDestInputMode("select");
+      } else {
+        setDestInputMode("manual");
+      }
+    }
+  }, [tgDialogsData]);
 
   // Form State
   const [formData, setFormData] = useState<RuleCreatePayload>(DEFAULT_RULE);
@@ -459,17 +480,91 @@ export default function ForwardEdit() {
             </div>
 
             <div>
-              <label htmlFor="destination_channel" className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
-                Destination Channel
-              </label>
-              <input
-                id="destination_channel"
-                type="text"
-                value={formData.destination_channel}
-                onChange={(e) => setFormData(prev => ({ ...prev, destination_channel: e.target.value }))}
-                placeholder="e.g. @my_destination_channel or -100123456789"
-                className="w-full h-10 px-3 border border-border rounded-md bg-card text-foreground focus:ring-primary focus:border-primary text-sm font-medium"
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                  Destination Channel
+                </label>
+                {tgDialogsData?.connected && (
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDestInputMode("select")}
+                      className={cn(
+                        "px-2 py-0.5 text-[9px] font-semibold rounded border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        destInputMode === "select"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Select
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDestInputMode("manual")}
+                      className={cn(
+                        "px-2 py-0.5 text-[9px] font-semibold rounded border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        destInputMode === "manual"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Manual
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {destInputMode === "select" && tgDialogsData?.connected ? (
+                <div className="animate-fade-in">
+                  {isTgDialogsLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>Loading dialogs...</span>
+                    </div>
+                  ) : (
+                    <select
+                      id="destination_channel_select"
+                      value={formData.destination_channel}
+                      onChange={(e) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          destination_channel: e.target.value
+                        }));
+                      }}
+                      className="w-full h-10 px-3 border border-border rounded-md bg-card text-foreground focus:ring-primary focus:border-primary text-sm font-medium cursor-pointer"
+                    >
+                      <option value="">Select destination channel/group...</option>
+                      {tgDialogsData.dialogs.map(d => {
+                        const ref = d.username ? `@${d.username}` : d.id;
+                        return (
+                          <option key={d.id} value={ref}>
+                            {d.name} {d.username ? `(@${d.username})` : `(ID: ${d.id})`} — {d.is_channel ? "Channel" : "Group"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <div className="animate-fade-in">
+                  <input
+                    id="destination_channel"
+                    type="text"
+                    value={formData.destination_channel}
+                    onChange={(e) => setFormData(prev => ({ ...prev, destination_channel: e.target.value }))}
+                    placeholder="e.g. @my_destination_channel or -100123456789"
+                    className="w-full h-10 px-3 border border-border rounded-md bg-card text-foreground focus:ring-primary focus:border-primary text-sm font-medium"
+                  />
+                </div>
+              )}
+
+              {/* Warning banner if not connected */}
+              {tgDialogsData && !tgDialogsData.connected && (
+                <div className="mt-1.5 p-2 rounded border border-warning-border bg-warning-bg/10 text-warning-foreground text-[10px] font-medium leading-normal">
+                  ⚠️ Live Telegram connection is not active. Dialogue listing is unavailable; please type the destination manually.
+                </div>
+              )}
+
               {apiErrors["destination_channel"] && (
                 <p className="text-error text-xs mt-1 font-semibold">{apiErrors["destination_channel"]}</p>
               )}
