@@ -1,16 +1,20 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { DegradedBanner } from "./DegradedBanner";
 import { Sheet } from "../shared/Sheet";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { cn } from "@/lib/utils";
 
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const location = useLocation();
 
   // Register Vim-style navigation keyboard shortcuts globally
   useKeyboardShortcuts();
+
+  const isFullWidth = location.pathname === "/logs";
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">
@@ -32,7 +36,7 @@ export default function Layout() {
 
         {/* Main Content Pane */}
         <main className="flex-grow overflow-y-auto px-4 py-6 md:px-8">
-          <div className="max-w-6xl mx-auto w-full">
+          <div className={cn("mx-auto w-full", isFullWidth ? "max-w-none" : "max-w-6xl")}>
             <Outlet />
           </div>
         </main>

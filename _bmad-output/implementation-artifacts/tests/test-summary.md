@@ -1,10 +1,11 @@
 # Test Automation Summary — Forward Bot
 
-**Framework:** pytest 9.0.3 + pytest-asyncio 1.4.0 (Python 3.13.3)  
+**Framework:** pytest 9.0.3 + pytest-asyncio 1.4.0 (Python 3.13.3) | Vitest 4.1.9 + @testing-library/react (Node / React 19)  
 **Test Suites:**
-- E2E Tests: [`tests/e2e/test_epic1_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic1_e2e.py), [`tests/e2e/test_epic2_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic2_e2e.py), [`tests/e2e/test_epic3_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic3_e2e.py)
-- API Tests: [`tests/api/test_rules.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_rules.py), [`tests/api/test_replacement_rules.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_replacement_rules.py), [`tests/api/test_folders.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_folders.py), [`tests/api/test_sources.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_sources.py), [`tests/api/test_health.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_health.py)
-- Repository & Client Tests: [`tests/infrastructure/mongo/`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/infrastructure/mongo/), [`tests/infrastructure/cache/`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/infrastructure/cache/)
+- Backend E2E Tests: [`tests/e2e/test_epic1_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic1_e2e.py), [`tests/e2e/test_epic2_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic2_e2e.py), [`tests/e2e/test_epic3_e2e.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/e2e/test_epic3_e2e.py)
+- Backend API Tests: [`tests/api/test_rules.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_rules.py), [`tests/api/test_replacement_rules.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_replacement_rules.py), [`tests/api/test_folders.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_folders.py), [`tests/api/test_sources.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_sources.py), [`tests/api/test_health.py`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/api/test_health.py)
+- Backend Repository & Client Tests: [`tests/infrastructure/mongo/`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/infrastructure/mongo/), [`tests/infrastructure/cache/`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/forward-bot/tests/infrastructure/cache/)
+- **Frontend (Epic 6) Tests:** [`web/src/hooks/useSseLog.test.ts`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/web/src/hooks/useSseLog.test.ts), [`web/src/components/shared/LogRow.test.tsx`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/web/src/components/shared/LogRow.test.tsx), [`web/src/components/FirstRunWizard.test.tsx`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/web/src/components/FirstRunWizard.test.tsx), [`web/src/pages/Logs.test.tsx`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/web/src/pages/Logs.test.tsx), [`web/src/pages/Dashboard.test.tsx`](file:///c:/Users/hitesh.paliwal/Documents/GitHub/Forward-Bot/web/src/pages/Dashboard.test.tsx)
 
 ---
 
@@ -134,7 +135,133 @@ All 8 ACs from Story 3.2 covered with 10 tests including: happy path create, inv
 
 ---
 
+### Epic 6 — Web Admin Dashboard (Frontend Tests)
+
+**Test Framework:** Vitest 4.1.9 + @testing-library/react + jsdom  
+**Run command:** `npm test` (in `web/`)
+
+#### Story 6-6 — `useSseLog` Hook (`web/src/hooks/useSseLog.test.ts`)
+
+| Test | AC | Description |
+|------|----|-------------|
+| opens EventSource when enabled=true | AC6 | Connects to `/api/v1/logs/stream` |
+| does NOT open EventSource when enabled=false | AC6 | EventSource gating |
+| returns initial state: entries=[], isConnected=false, isError=false | AC6 | Initial state |
+| sets isConnected=true and isError=false on onopen | AC6 | Connection open event |
+| sets isConnected=false and isError=true on onerror | AC2/AC6 | Error state detection |
+| clears isError when connection re-opens after error | AC2/AC6 | Auto-reconnect recovery |
+| appends incoming SSE entries to the buffer | AC6 | Entry accumulation |
+| filters out entries with timestamps <= startAfterTimestamp | AC6 | Dedup via cutoff |
+| updates cutoff so replay duplicates are rejected | AC1/AC6 | Anti-duplicate on reconnect |
+| ignores malformed SSE data (no crash) | AC6 | Error resilience |
+| closes EventSource on unmount | AC6 | Memory leak prevention |
+| sets isConnected=false when enabled becomes false | AC6 | Dynamic enabled toggle |
+| opens EventSource with withCredentials=true | AC6 | Cookie auth on SSE |
+
+**Total: 13 tests ✅**
+
+#### Story 6-2/6-6 — `LogRow` Component (`web/src/components/shared/LogRow.test.tsx`)
+
+| Test | Description |
+|------|-------------|
+| renders event label in title case | `forward_succeeded` → "Forward Succeeded" |
+| renders event label for multi-word events | `pipeline_blocked` → "Pipeline Blocked" |
+| renders formatted timestamp (HH:MM:SS) | `toLocaleTimeString` output |
+| expands detail panel on click | Panel opens with action buttons |
+| collapses detail panel on second click (state toggles) | Toggle isOpen |
+| expands on Enter key press | Keyboard accessibility |
+| expands on Space key press | Keyboard accessibility |
+| does NOT expand on unrelated key press | Tab key ignored |
+| shows Copy Correlation ID when correlation_id present | Copy button present |
+| does NOT show Copy button when correlation_id absent | Conditional render |
+| calls onFilterByCorrelationId with id on Filter click | AC4 — filter callback |
+| does NOT show Filter button without callback | Optional prop behavior |
+| shows Jump to rule link when rule_id present | AC4 — rule navigation |
+| does NOT show Jump to rule when rule_id absent | Conditional render |
+| renders payload preview text for entries with extra data | Inline payload preview |
+| applies success border stripe for forward_succeeded | Variant CSS class |
+| applies muted border stripe for pipeline_blocked | Variant CSS class |
+| applies error border stripe for forward_failed | Variant CSS class |
+| applies warning border stripe for flood_wait | Variant CSS class |
+| applies default border stripe for unknown events | Default fallback |
+
+**Total: 20 tests ✅**
+
+#### Story 6-6 — `FirstRunWizard` Component (`web/src/components/FirstRunWizard.test.tsx`)
+
+| Test | AC | Description |
+|------|----|-------------|
+| renders wizard dialog when open=true | AC5/AC7 | Dialog visible |
+| does NOT render wizard content when open=false | AC7 | Conditional render |
+| shows step 1: Register a Source on initial render | AC5 | Step 1 content |
+| shows all 3 step indicators | AC5 | Step indicator UI |
+| Back button is disabled on step 1 | AC5 | Navigation constraint |
+| Next button advances to step 2 | AC5 | Step navigation |
+| Back button from step 2 goes back to step 1 | AC5 | Back navigation |
+| Next from step 2 advances to step 3 | AC5 | Step 3 content |
+| shows Finish button on last step (not Next) | AC5 | Last step UI |
+| "Go to Sources" navigates to /sources/new | AC5 | Step action routing |
+| "Go to Forwards" navigates to /forwards/new | AC5 | Step action routing |
+| "Go to Logs" navigates to /logs | AC5 | Step action routing |
+| "Skip setup" calls onDismiss | AC5 | Dismiss behavior |
+| "Skip setup" sets localStorage fb-first-run-dismissed=true | AC5 | Persistent dismissal |
+| "Finish" on last step calls onDismiss | AC5 | Finish dismiss |
+| "Finish" sets localStorage fb-first-run-dismissed=true | AC5 | Persistent dismissal |
+| shows "Welcome to Forward Bot" subtitle text | AC5/AC7 | Branding text |
+
+**Total: 17 tests ✅**
+
+#### Story 6-6 — `Logs` Page (`web/src/pages/Logs.test.tsx`)
+
+| Test | AC | Description |
+|------|----|-------------|
+| renders the System Logs heading | AC1 | Page renders |
+| calls logsApi.fetchRecent(200) on mount | AC1 | Historical batch API call |
+| shows "Live Feed" badge when SSE is connected | AC1 | Connection status |
+| shows "Disconnected" badge when SSE is not connected | AC1/AC2 | Disconnect state |
+| renders historical log entries as LogRow components | AC1 | Historical data display |
+| renders SSE (live) entries merged with historical | AC1 | Merge logic |
+| shows loading spinner while data is loading | AC1 | Loading state |
+| shows error state when historical batch fails | AC1 | Error handling |
+| shows empty state when no entries and no filters | AC1 | Empty state |
+| renders "Pause Scroll" button when entries present | AC1 | Auto-scroll control |
+| toggles auto-scroll: Pause → Auto Scroll on click | AC1 | Toggle functionality |
+| shows "Tail Mode Enabled" when auto-scroll is active | AC1 | Footer label |
+| shows DegradedBanner when SSE isError=true | AC2 | Error banner |
+| does NOT show DegradedBanner when isError=false | AC2 | Conditional banner |
+| renders all 4 severity filter chips | AC3 | Filter UI |
+| renders Trace ID input field | AC3/AC4 | Correlation filter UI |
+| filters entries by severity chip (error only) | AC3 | Client-side filter |
+| shows "Clear active filters" when filter active | AC3 | Clear button UI |
+| clearing filters resets visible entries | AC3 | Filter reset |
+| shows "No Logs Found" with filter-specific message | AC3 | Empty filtered state |
+| pre-selects severity filter from URL query param | AC3 | URL state persistence |
+| shows entry count when filters active | AC3 | Count indicator |
+| filters by correlation_id when typed in Trace ID input | AC4 | Correlation ID filter |
+| shows clear (×) button inside Trace ID input | AC4 | Input clear UX |
+| shows "Jump to forwarding rule →" link | AC4 | Rule navigation in filter bar |
+| pre-selects correlation_id filter from URL | AC3/AC4 | URL state persistence |
+| shows "Buffer limit: 1000 items" in footer | AC1/AC6 | Buffer info |
+
+**Total: 27 tests ✅**
+
+#### Story 6-6 — `Dashboard` First-Run Wizard Integration (`web/src/pages/Dashboard.test.tsx`)
+
+| Test | AC | Description |
+|------|----|-------------|
+| opens First-Run Wizard when rules total=0 and localStorage not set | AC5 | Auto-open condition |
+| does NOT open wizard when localStorage is "true" | AC5 | Dismissed state |
+| does NOT open wizard when at least 1 rule exists | AC5 | Rules exist condition |
+| calls fetchRules with page_size=1 to detect first-run | AC5 | Efficient API check |
+| renders Dashboard header content | — | Basic render |
+
+**Total: 5 tests ✅**
+
+---
+
 ## Suite Summary & Coverage
+
+### Backend Tests (Python / pytest)
 
 | Test Suite | Total Passed | Description |
 |------------|--------------|-------------|
@@ -155,24 +282,55 @@ All 8 ACs from Story 3.2 covered with 10 tests including: happy path create, inv
 | `test_cache_refresher.py` | 11 | build_rule_cache + run_cache_refresher |
 | `test_telegram_client.py` | 5 | Telegram connection unit tests |
 | `test_config.py` | 7 | Settings validation unit tests |
+| **Subtotal** | **199** | |
 
-**Total passing tests in project: 230**  
-**Execution duration: ~12.27 seconds**  
-**Warnings: 4 (FastAPI standard deprecation warning — `HTTP_422_UNPROCESSABLE_ENTITY`)**
+### Frontend Tests (Vitest / React Testing Library)
+
+| Test Suite | Total Passed | Description |
+|------------|--------------|-------------|
+| `useSseLog.test.ts` | 13 | SSE hook lifecycle, state, dedup, buffer |
+| `LogRow.test.tsx` | 20 | Component render, expand/collapse, variant CSS, callbacks |
+| `FirstRunWizard.test.tsx` | 17 | 3-step wizard, navigation, localStorage, dismiss |
+| `Logs.test.tsx` | 27 | Logs page: historical+SSE merge, filters, URL state, AC1-4 |
+| `Dashboard.test.tsx` | 5 | First-Run Wizard auto-open integration |
+| **Subtotal** | **82** | |
+
+---
+
+## Total Passing Tests
+
+| Layer | Count |
+|-------|-------|
+| Backend (Python/pytest) | 199 |
+| Frontend (Vitest/React) | 82 |
+| **Grand Total** | **281** |
 
 ---
 
 ## Test Run Results
 
+### Backend
 ```
 ====================== 230 passed, 4 warnings in 12.27s =======================
 ```
 
-All E2E, API integration, repository, and unit tests pass with 100% success rate.
+### Frontend (Epic 6)
+```
+ ✓ src/hooks/useSseLog.test.ts (13 tests) 97ms
+ ✓ src/components/shared/LogRow.test.tsx (20 tests) 981ms
+ ✓ src/components/FirstRunWizard.test.tsx (17 tests) 846ms
+ ✓ src/pages/Dashboard.test.tsx (5 tests) 204ms
+ ✓ src/pages/Logs.test.tsx (27 tests) 1377ms
+
+ Test Files  5 passed (5)
+      Tests  82 passed (82)
+   Duration  12.35s
+```
 
 ---
 
 ## Next Steps
 
-- Integrate Epic 4 (Core Message Forwarding Engine) pipeline steps — the `RuleCache` and `CacheHolder` from Story 3.3 are ready.
-- E2E test for Epic 4 will exercise the full pipeline dispatch cycle (filter + transform + delivery).
+- Add Playwright E2E browser tests for full cross-browser user journey testing (login → dashboard → logs → first-run wizard).
+- Run frontend tests in CI pipeline alongside backend pytest tests.
+- Consider adding tests for remaining Epic 6 screens: ForwardsList, ForwardEdit, SourcesList, SourceEdit pages.

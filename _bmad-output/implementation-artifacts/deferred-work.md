@@ -123,3 +123,7 @@ The epic spec does not cover what happens when `POST /api/v1/sources` is called 
 ## Deferred from: code review 6-3-dashboard-s1-settings-s8-screens.md (2026-06-25)
 - [Review][Defer] ServiceVersion Fallback UX — "0.1.0" fallback masks missing version data [web/src/pages/Settings.tsx]
 - [Review][Defer] Client Session Timer Resets — Timer tracks component mount time rather than true session uptime [web/src/pages/Settings.tsx]
+
+## Deferred from: code review (6-4-forwards-list-s2-forward-edit-s3-screens.md)
+- handleSelectAll only selects current page items [ForwardsList.tsx] - pre-existing typical behavior, not an immediate failure
+

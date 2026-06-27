@@ -7,10 +7,8 @@ import ForwardsList from "@/pages/ForwardsList";
 import ForwardEdit from "@/pages/ForwardEdit";
 import SourcesList from "@/pages/SourcesList";
 import SourceEdit from "@/pages/SourceEdit";
-import FolderModal from "@/pages/FolderModal";
 import Logs from "@/pages/Logs";
 import Settings from "@/pages/Settings";
-import FirstRunWizard from "@/pages/FirstRunWizard";
 
 export default function AppRoutes() {
   return (
@@ -26,13 +24,13 @@ export default function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="forwards" element={<ForwardsList />} />
-        <Route path="forwards/:id" element={<ForwardEdit />} />
+        <Route path="forwards/new" element={<ForwardEdit />} />
+        <Route path="forwards/:id/edit" element={<ForwardEdit />} />
         <Route path="sources" element={<SourcesList />} />
-        <Route path="sources/:id" element={<SourceEdit />} />
-        <Route path="folders/:id" element={<FolderModal />} />
+        <Route path="sources/new" element={<SourceEdit />} />
+        <Route path="sources/:id/edit" element={<SourceEdit />} />
         <Route path="logs" element={<Logs />} />
         <Route path="settings" element={<Settings />} />
-        <Route path="wizard" element={<FirstRunWizard />} />
       </Route>
       {/* SPA fallback redirect to dashboard */}
       <Route path="*" element={<Navigate to="/" replace />} />

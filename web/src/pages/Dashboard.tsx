@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { healthApi } from "@/api/health";
@@ -6,6 +7,7 @@ import { logsApi } from "@/api/logs";
 import { rulesApi } from "@/api/rules";
 import { queryKeys } from "@/lib/queryKeys";
 import { LogRow, ActivationBanner } from "@/components/shared";
+import { FirstRunWizard } from "@/components/FirstRunWizard";
 import { 
   Activity, 
   Server, 
@@ -20,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function Dashboard() {
-
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   // 1. Telegram Status Query (staleTime 30s)
   const { 
@@ -82,9 +84,21 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
-
-
   const isFirstRun = !isRulesLoading && !isRulesError && rulesData?.total === 0;
+
+  useEffect(() => {
+    if (isFirstRun) {
+      const dismissed = localStorage.getItem("fb-first-run-dismissed") === "true";
+      if (!dismissed) {
+        setWizardOpen(true);
+      }
+    }
+  }, [isFirstRun]);
+
+  const handleDismissWizard = () => {
+    localStorage.setItem("fb-first-run-dismissed", "true");
+    setWizardOpen(false);
+  };
 
   // Telegram helper status
   const telegramStatus = telegramData?.telegram || "disconnected";
@@ -395,6 +409,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <FirstRunWizard open={wizardOpen} onDismiss={handleDismissWizard} />
     </div>
   );
 }

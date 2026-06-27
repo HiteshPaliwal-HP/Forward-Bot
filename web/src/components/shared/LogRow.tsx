@@ -10,7 +10,8 @@ import {
   CornerDownRight, 
   Info,
   Copy,
-  Check
+  Check,
+  Filter
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -139,9 +140,10 @@ const getPayloadPreview = (entry: LogEntry) => {
 
 interface LogRowProps {
   entry: LogEntry;
+  onFilterByCorrelationId?: (id: string) => void;
 }
 
-export function LogRow({ entry }: LogRowProps) {
+export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -239,6 +241,18 @@ export function LogRow({ entry }: LogRowProps) {
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copied ? "Copied" : "Copy Correlation ID"}</span>
+                  </button>
+                )}
+                {entry.correlation_id && onFilterByCorrelationId && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFilterByCorrelationId(entry.correlation_id!);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-card hover:bg-muted border border-border rounded-md text-muted-foreground hover:text-foreground transition-all cursor-pointer shadow-3xs"
+                  >
+                    <Filter className="w-3.5 h-3.5 text-primary" />
+                    <span>Filter by this ID</span>
                   </button>
                 )}
                 {entry.rule_id && (

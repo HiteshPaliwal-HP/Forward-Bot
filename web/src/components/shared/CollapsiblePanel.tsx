@@ -8,6 +8,8 @@ interface CollapsiblePanelProps {
   children: React.ReactNode;
   defaultOpen?: boolean;
   className?: string;
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 export function CollapsiblePanel({
@@ -15,10 +17,23 @@ export function CollapsiblePanel({
   summary,
   children,
   defaultOpen = false,
-  className
+  className,
+  isOpen: controlledIsOpen,
+  onToggle
 }: CollapsiblePanelProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [internalIsOpen, setInternalIsOpen] = useState(defaultOpen);
   const panelId = useId();
+
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+
+  const handleToggle = () => {
+    if (isControlled) {
+      onToggle?.();
+    } else {
+      setInternalIsOpen(!isOpen);
+    }
+  };
 
   return (
     <div className={cn("border border-border rounded-lg bg-card overflow-hidden transition-all duration-200 shadow-2xs", className)}>
@@ -26,7 +41,7 @@ export function CollapsiblePanel({
         type="button"
         aria-expanded={isOpen}
         aria-controls={panelId}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/30 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
