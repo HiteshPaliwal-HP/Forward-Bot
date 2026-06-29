@@ -2,9 +2,10 @@
 import asyncio
 import contextvars
 import uuid
+from io import BytesIO
 import structlog
 from telethon import events
-from telethon.tl.types import PeerChannel, PeerChat, PeerUser
+from telethon.tl.types import PeerChannel, PeerChat, PeerUser, MessageMediaPhoto, DocumentAttributeFilename
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
 
@@ -15,6 +16,9 @@ from forward_bot.domain.entities.message_mapping import MessageMapping
 from forward_bot.infrastructure.mongo.repositories.mapping_repository import MappingRepository
 from forward_bot.infrastructure.mongo.repositories.sampling_repository import SamplingRepository
 from forward_bot.application.pipeline.engine import PipelineEngine
+
+# How long (seconds) to wait for all album messages to arrive before flushing.
+_ALBUM_COLLECT_DELAY = 1.0
 
 
 class TelegramWorker:
@@ -33,6 +37,10 @@ class TelegramWorker:
         self.sampling_counters = {}  # In-memory counters {rule_id: counter} for sampling
         self._sampling_lock = asyncio.Lock()  # Guards concurrent read-modify-write on sampling_counters
         self._handler = None
+        # Album (media group) buffering: keyed by grouped_id
+        # Each entry: {"messages": [...], "source": source_entity, "correlation_id": str}
+        self._album_buffers: dict = {}
+        self._album_flush_tasks: dict = {}  # grouped_id -> asyncio.Task
 
     async def run(self) -> None:
         """Starts the worker, registers the event handler, and enters the lifecycle loop."""
@@ -244,6 +252,14 @@ class TelegramWorker:
                 text = event.message.message or ""
                 caption = None
 
+            # Handle album (media group): buffer and flush as a group
+            grouped_id = getattr(event.message, "grouped_id", None)
+            if grouped_id is not None and media is not None:
+                await self._handle_album_message(
+                    event, grouped_id, matching_source, matching_rules, correlation_id
+                )
+                return
+
             # Get reply msg ID if present
             reply_to_msg_id = None
             if event.message.reply_to:
@@ -304,6 +320,257 @@ class TelegramWorker:
             )
         finally:
             structlog.contextvars.clear_contextvars()
+
+    async def _handle_album_message(
+        self,
+        event: events.NewMessage.Event,
+        grouped_id: int,
+        matching_source,
+        matching_rules: list,
+        correlation_id: str,
+    ) -> None:
+        """Buffers a single album (media group) message and schedules a group flush after a short delay."""
+        key = grouped_id
+        if key not in self._album_buffers:
+            self._album_buffers[key] = {
+                "messages": [],
+                "source": matching_source,
+                "rules": matching_rules,
+                "correlation_id": correlation_id,
+            }
+        self._album_buffers[key]["messages"].append(event.message)
+
+        # Cancel any pending flush task — we restart the timer each time a new message arrives
+        if key in self._album_flush_tasks:
+            self._album_flush_tasks[key].cancel()
+
+        async def _flush_after_delay():
+            await asyncio.sleep(_ALBUM_COLLECT_DELAY)
+            await self._flush_album(key)
+
+        self._album_flush_tasks[key] = asyncio.create_task(_flush_after_delay())
+
+    async def _flush_album(
+        self,
+        grouped_id: int,
+    ) -> None:
+        """Sends all buffered album messages as a grouped media send to the destination."""
+        buf = self._album_buffers.pop(grouped_id, None)
+        self._album_flush_tasks.pop(grouped_id, None)
+        if not buf:
+            return
+
+        messages = buf["messages"]
+        matching_rules = buf["rules"]
+        correlation_id = buf["correlation_id"]
+
+        # Sort by message_id to preserve original order
+        messages.sort(key=lambda m: m.id)
+
+        from forward_bot.infrastructure.telegram import telegram_client
+        client = telegram_client.client
+        if not client:
+            return
+
+        album_caption = messages[0].message or ""
+
+        # Partition rules by their forward_media setting so we only
+        # download media when at least one rule actually needs it.
+        ignore_rules = [r for r in matching_rules if getattr(r, "forward_media", "forward") == "ignore"]
+        caption_only_rules = [r for r in matching_rules if getattr(r, "forward_media", "forward") == "caption_only"]
+        forward_rules = [r for r in matching_rules if getattr(r, "forward_media", "forward") == "forward"]
+
+        # --- caption_only: send text/caption, no media download needed ---
+        for rule in caption_only_rules:
+            if not album_caption:
+                continue
+            try:
+                destination = rule.destination_channel
+                try:
+                    destination_entity = int(destination)
+                except (ValueError, TypeError):
+                    destination_entity = destination
+                await client.send_message(destination_entity, message=album_caption)
+                structlog.get_logger().info(
+                    "album_caption_only_sent",
+                    rule_id=rule.id,
+                    grouped_id=grouped_id,
+                    correlation_id=correlation_id,
+                )
+            except Exception as e:
+                structlog.get_logger().error(
+                    "album_caption_only_failed",
+                    rule_id=rule.id,
+                    grouped_id=grouped_id,
+                    correlation_id=correlation_id,
+                    error=str(e),
+                )
+
+        # --- ignore: nothing to do ---
+        for rule in ignore_rules:
+            structlog.get_logger().info(
+                "album_ignored",
+                rule_id=rule.id,
+                grouped_id=grouped_id,
+                correlation_id=correlation_id,
+                message="Album skipped: rule media handling is set to ignore.",
+            )
+
+        # --- forward: try raw send first, fall back to download only if protected ---
+        if not forward_rules:
+            return  # No download needed at all
+
+        # Raw media objects from the source messages — no download cost
+        raw_files = [m.media for m in messages if m.media is not None]
+
+        # After first successful send, Telegram returns Message objects whose media
+        # carry the newly uploaded file_id. We reuse those for subsequent rule sends
+        # to avoid re-uploading the same bytes multiple times.
+        cached_sent_messages = None  # List[Message] from first successful send
+
+        async def _download_all():
+            """Download all album media to RAM (fallback for protected channels)."""
+            async def _resolve_file(msg):
+                media = msg.media
+                if media is None:
+                    return None
+                try:
+                    file_buf = BytesIO()
+                    await client.download_media(media, file=file_buf)
+                    file_buf.seek(0)
+                    if isinstance(media, MessageMediaPhoto):
+                        file_buf.name = "image.jpg"
+                    else:
+                        doc = getattr(media, "document", None)
+                        if doc:
+                            for attr in getattr(doc, "attributes", []):
+                                if isinstance(attr, DocumentAttributeFilename):
+                                    file_buf.name = attr.file_name
+                                    break
+                            else:
+                                file_buf.name = "file"
+                        else:
+                            file_buf.name = "file"
+                    return file_buf
+                except Exception as dl_err:
+                    logger.warning(
+                        "album_media_download_failed",
+                        message_id=msg.id,
+                        correlation_id=correlation_id,
+                        error=str(dl_err),
+                        message="Skipping album photo: failed to download media."
+                    )
+                    return None
+
+            results = await asyncio.gather(*[_resolve_file(m) for m in messages])
+            return [f for f in results if f is not None]
+
+        # files_to_send holds either raw media objects or BytesIO buffers
+        files_to_send = raw_files
+        downloaded = False  # Track whether we've already paid the download cost
+
+        from telethon.errors import ChatForwardsRestrictedError
+
+        for rule in forward_rules:
+            destination = rule.destination_channel
+            try:
+                destination_entity = int(destination)
+            except (ValueError, TypeError):
+                destination_entity = destination
+
+            try:
+                # Optimization 2: reuse file_ids from first successful upload
+                if cached_sent_messages is not None:
+                    file_arg = [m.media for m in cached_sent_messages if m.media is not None]
+                else:
+                    # Rewind BytesIO buffers if we've already downloaded
+                    if downloaded and isinstance(files_to_send[0], BytesIO):
+                        for f in files_to_send:
+                            f.seek(0)
+                    file_arg = files_to_send
+
+                sent = await client.send_file(
+                    destination_entity,
+                    file=file_arg,
+                    caption=album_caption,
+                )
+
+                # Cache the sent messages for reuse (Optimization 2)
+                if cached_sent_messages is None:
+                    cached_sent_messages = sent if isinstance(sent, list) else [sent]
+
+                dest_ids = [m.id for m in sent] if isinstance(sent, list) else [sent.id]
+                structlog.get_logger().info(
+                    "album_forward_succeeded",
+                    rule_id=rule.id,
+                    grouped_id=grouped_id,
+                    source_message_ids=[m.id for m in messages],
+                    destination_message_ids=dest_ids,
+                    correlation_id=correlation_id,
+                    used_cache=cached_sent_messages is not None,
+                )
+
+            except (ChatForwardsRestrictedError, Exception) as e:
+                is_protected = isinstance(e, ChatForwardsRestrictedError) or (
+                    hasattr(e, "__class__") and "ChatForwardsRestricted" in e.__class__.__name__
+                ) or ("protected chat" in str(e).lower())
+
+                # Optimization 1: only download on protected chat error, not upfront
+                if is_protected and not downloaded:
+                    logger.warning(
+                        "album_protected_chat_fallback",
+                        grouped_id=grouped_id,
+                        correlation_id=correlation_id,
+                        message="Source is protected. Downloading album media for re-upload.",
+                    )
+                    files_to_send = await _download_all()
+                    downloaded = True
+                    if not files_to_send:
+                        logger.error(
+                            "album_flush_no_files",
+                            grouped_id=grouped_id,
+                            correlation_id=correlation_id,
+                            message="Album flush: no downloadable media found after protected chat fallback.",
+                        )
+                        return
+                    # Retry this same rule with downloaded bytes
+                    try:
+                        sent = await client.send_file(
+                            destination_entity,
+                            file=files_to_send,
+                            caption=album_caption,
+                        )
+                        if cached_sent_messages is None:
+                            cached_sent_messages = sent if isinstance(sent, list) else [sent]
+                        dest_ids = [m.id for m in sent] if isinstance(sent, list) else [sent.id]
+                        structlog.get_logger().info(
+                            "album_forward_succeeded",
+                            rule_id=rule.id,
+                            grouped_id=grouped_id,
+                            source_message_ids=[m.id for m in messages],
+                            destination_message_ids=dest_ids,
+                            correlation_id=correlation_id,
+                            used_cache=False,
+                        )
+                    except Exception as retry_err:
+                        structlog.get_logger().error(
+                            "album_forward_failed",
+                            rule_id=rule.id,
+                            grouped_id=grouped_id,
+                            correlation_id=correlation_id,
+                            error=str(retry_err),
+                            message="Failed to forward album after protected chat download fallback.",
+                        )
+                else:
+                    structlog.get_logger().error(
+                        "album_forward_failed",
+                        rule_id=rule.id,
+                        grouped_id=grouped_id,
+                        correlation_id=correlation_id,
+                        error=str(e),
+                        message="Failed to forward album to destination.",
+                    )
+
 
     async def process_edit_event(self, event: events.MessageEdited.Event) -> None:
         """Processes an incoming message edit event and propagates it to all mapped destinations."""
