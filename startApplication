@@ -1,0 +1,3 @@
+In forward-bot folder run : uv run python -m forward_bot auth (telegram session)
+Start Backend App : uv run python -m forward_bot
+In web directory : npm run dev

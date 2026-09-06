@@ -6,6 +6,7 @@ inputDocuments:
   - architecture.md
   - ux-designs/ux-Forward Bot-2026-05-31/DESIGN.md
   - ux-designs/ux-Forward Bot-2026-05-31/EXPERIENCE.md
+  - ux-designs/ux-Forward Bot-2026-05-31/reconcile-prd-forward-bot-2026-05-31.md
 ---
 
 # Forward Bot - Epic Breakdown
@@ -40,7 +41,13 @@ FR-10: When a Source Message arrives, the worker evaluates every active Forwardi
 
 FR-11: For each (Source Message, Forwarding Rule) pair, the pipeline runs in this canonical 18-step order: (1) Time-Window check, (2) Sampling check, (3) Media-Type filter, (4) Block-Keyword check, (5) Allow-Keyword check, (6) Media decision, (7) Reply lookup, (8) Source-Reference Auto-Replacement, (9) Text Replacement Rules, (10) Link removal, (11) Hashtag removal, (12) Mention removal, (13) Media Replacement, (14) Whitespace normalization, (15) Attribution prefix/suffix, (16) Empty-result check, (17) Deliver, (18) Persist Message Mapping.
 
-FR-12: The pipeline reads from an in-memory cache refreshed from MongoDB every 30 seconds (configurable); end-to-end staleness from rule change to applied evaluation ≤60 seconds; non-blocking refresh; in-flight runs use their snapshot.
+FR-12: Rule Cache Management & Multi-Tier Refresh Strategy — The Processing Pipeline reads from an in-memory `RuleCache` snapshot of active Sources, Folders, Forwarding Rules, and Replacement Rules, operating on a three-tier refresh model: event-driven instant rebuild, manual trigger, and periodic background fallback.
+
+FR-12a: Event-Driven Instant Cache Refresh on DB Operations — Whenever a REST API operation mutates rules, replacement rules, sources, or folders (Create, Update, Delete, Enable, Disable), the system immediately triggers an asynchronous in-memory rebuild of `RuleCache` and atomically swaps `CacheHolder.current` in <1 second without blocking API response.
+
+FR-12b: Manual UI & REST Endpoint Cache Refresh — Backend exposes `POST /api/v1/admin/cache/refresh` (and `/api/v1/cache/refresh`) and Web Admin Dashboard (Settings S8 & top bar) features a "Refresh Cache" button, allowing on-demand cache rebuild with toast notification surfacing version, rule_count, source_count, and refreshed_at.
+
+FR-12c: Fallback Periodic Background Refresh — Background `run_cache_refresher` task continues to run periodically based on `HOT_RELOAD_INTERVAL` (default 30 seconds) as a fallback safety net to guarantee eventual consistency.
 
 FR-13: remove_links=true removes http://, https://, t.me/, telegram.me/, tg://, and joinchat/+ invite-link forms.
 
@@ -105,6 +112,18 @@ FR-43: POST /api/v1/auth/login accepts {"api_key": "..."} and sets an HttpOnly, 
 FR-44: GET /api/v1/logs/stream is an SSE endpoint pushing live JSON log events, filterable by event and correlation_id query params; GET /api/v1/logs/recent returns last N log lines from the in-memory ring buffer; GET /api/v1/logs/search supports correlation_id lookup over the recent past (default last 1h, max 24h).
 
 FR-45: The dashboard is built as a static asset bundle (React 18 + TypeScript + Vite + Tailwind + TanStack Query + React Router + shadcn/ui) compiled in a multi-stage Docker build and served by the same FastAPI process at / (with API at /api/v1/*); UI_ENABLED=true (default) mounts static assets.
+
+FR-46: Settings page (S8) fetches and displays current Telegram session state (CONNECTED green indicator with "Terminate Session" button, or DISCONNECTED red indicator with "Connect Telegram" card). Shows phone input field in E.164 format (+<country><number>) when phone_required: true (if TELEGRAM_PHONE is absent from env). Refreshes status every 10s via TanStack Query.
+
+FR-47: Operator clicks "Send OTP" to trigger POST /api/v1/telegram/auth/start (calls Telethon send_code_request(), stores phone_code_hash in memory). Enters 6-digit OTP and clicks "Connect", triggering POST /api/v1/telegram/auth/verify (calls Telethon sign_in(), writes .session, calls TelegramClientHolder.reconnect() dynamically without service restart). "Send OTP" button throttled for 60s client-side.
+
+FR-48: 2FA support: if account has cloud password, sign_in() returning SessionPasswordNeededError causes backend to return HTTP 202 { "requires_2fa": true }. UI reveals password input field; operator submits password via POST /api/v1/telegram/auth/verify with password field (masked, never logged).
+
+FR-49: Operator clicks "Terminate Session" on Settings page; confirmation modal requires typing terminate (case-insensitive) to confirm. Triggers POST /api/v1/telegram/auth/terminate (calls Telethon client.log_out(), deletes .session file, sets TelegramClientHolder _connected = False). In-flight pipeline runs complete; subsequent incoming messages are dropped and logged as telegram_session_terminated_drop.
+
+FR-50: Auth edge cases handled gracefully: wrong OTP (HTTP 400 invalid_otp), expired OTP (HTTP 400 otp_expired), concurrent auth attempt (HTTP 409 auth_in_progress), already connected (HTTP 409 already_connected), OTP timeout window (10 min in-memory cleanup via TELEGRAM_OTP_TIMEOUT_SECS), max OTP retries (surface Telethon error message), terminate while disconnected (HTTP 409 not_connected).
+
+FR-51: TelegramClientHolder lifecycle methods: reconnect(session_path: str) reinstantiates Telethon client from session file, re-registers event handlers, marks _connected = True; terminate() sets _connected = False, revokes session, deletes session file. Both acquire an asyncio.Lock. Hot-reload loop pauses while _connected is False. Event dispatch drops events when _connected is False.
 
 ### NonFunctional Requirements
 
@@ -234,6 +253,12 @@ UX-DR24: Implement Reconnect button states (S8 Settings + degraded banner) — i
 
 UX-DR25: Implement flood-wait top-bar pill — warning-tinted pill alongside Telegram status dot when a FloodWait event is active; copy indicates per-rule throttle (not system disconnection); clears when FloodWait resolves.
 
+UX-DR26: Implement Telegram Session Management UI card on S8 Settings page — displays CONNECTED (green dot) + "Terminate Session" button OR DISCONNECTED (red dot) + "Connect Telegram" card. When phone_required: true, shows E.164 phone input field (+<country><number>) before "Send OTP" button.
+
+UX-DR27: Implement OTP and 2FA input flows — 60s throttle on "Send OTP" button, reveals 6-digit numeric OTP input field; upon HTTP 202 requires_2fa: true, reveals masked password input field with inline error handling for wrong OTP/password.
+
+UX-DR28: Implement Terminate Session confirmation modal — requires operator to type "terminate" (case-insensitive) to enable "Confirm Terminate" button; on completion transitions UI to DISCONNECTED state.
+
 ### FR Coverage Map
 
 | FR | Epic | Brief description |
@@ -249,7 +274,10 @@ UX-DR25: Implement flood-wait top-bar pill — warning-tinted pill alongside Tel
 | FR-9 | Epic 4 | Source subscription in worker |
 | FR-10 | Epic 4 | Per-rule dispatch for each source message |
 | FR-11 | Epic 4 | 18-step canonical pipeline |
-| FR-12 | Epics 3+4 | Cache built in Epic 3; consumed by worker in Epic 4 |
+| FR-12 | Epics 3+4 | Rule Cache Management & Multi-Tier Refresh Strategy |
+| FR-12a | Epics 3+4 | Event-Driven Instant Cache Refresh on DB operations (<1s) |
+| FR-12b | Epics 3+5+6 | REST endpoint `POST /api/v1/admin/cache/refresh` (Epic 3/5) & Dashboard "Refresh Cache" UI button (Epic 6) |
+| FR-12c | Epics 3+4 | Fallback periodic background refresh task (30s) |
 | FR-13 | Epic 4 | URL stripping step in pipeline |
 | FR-14 | Epic 4 | Media mode decision step |
 | FR-15 | Epic 4 | Media-type scope (text+photo only) |
@@ -282,10 +310,16 @@ UX-DR25: Implement flood-wait top-bar pill — warning-tinted pill alongside Tel
 | FR-43 | Epic 6 | Cookie-based UI auth |
 | FR-44 | Epics 5+6 | SSE backend in Epic 5; S7 Logs screen in Epic 6 |
 | FR-45 | Epic 6 | Vite build + StaticFiles serve + SPA catch-all |
-| UX-DR1–25 | Epic 6 | All UX design requirements |
+| FR-46 | Epics 5+6 | Session status endpoint + Settings page session card |
+| FR-47 | Epics 5+6 | OTP connect endpoint + UI connect flow |
+| FR-48 | Epics 5+6 | 2FA verification support in backend + UI |
+| FR-49 | Epics 5+6 | Terminate session endpoint + UI modal |
+| FR-50 | Epics 5+6 | Session auth edge-case error handling |
+| FR-51 | Epics 1+5 | TelegramClientHolder reconnect & terminate lifecycle methods |
+| UX-DR1–28 | Epic 6 | All UX design requirements |
 | NFR-Perf | Epic 4 | Async pipeline, early filter short-circuit |
 | NFR-Rel | Epic 4 | Per-rule isolation + retry |
-| NFR-RuleChange | Epic 3 | 30s cache refresh |
+| NFR-RuleChange | Epic 3 | Instant event-driven cache rebuild (<1s) & 30s background fallback |
 | NFR-Reconnect | Epic 1 | SQLiteSession auto-reconnect |
 | NFR-Propagation | Epic 5 | Edit/delete sync ≤5s |
 | NFR-FilterAccuracy | Epic 4 | All 5 filter steps tested |
@@ -312,30 +346,37 @@ Operator can register Telegram channels/groups as Sources with stable IDs, organ
 ---
 
 ### Epic 3: Forwarding Rule Configuration
-Operator can create comprehensive forwarding rules — source/destination, all 5 filter types, all text/media transforms, replacement rules, and attribution — via the REST API; rules are cached atomically in-memory and hot-reloaded every 30s.
+Operator can create comprehensive forwarding rules — source/destination, all 5 filter types, all text/media transforms, replacement rules, and attribution — via the REST API; rules are cached atomically in-memory with event-driven instant rebuild (<1s) on mutations, manual refresh endpoint, and periodic 30s background fallback.
 
-**FRs covered:** FR-4, FR-5, FR-6, FR-7, FR-8, FR-12, FR-31a, FR-32, FR-33, FR-34, FR-35, FR-36, FR-37, FR-38, FR-39, FR-41, NFR-RuleChange
+**FRs covered:** FR-4, FR-5, FR-6, FR-7, FR-8, FR-12, FR-12a, FR-12b, FR-12c, FR-31a, FR-32, FR-33, FR-34, FR-35, FR-36, FR-37, FR-38, FR-39, FR-41, NFR-RuleChange
 
 ---
 
 ### Epic 4: Core Message Forwarding Engine
 The service actively monitors all registered sources and automatically forwards qualifying messages through the complete 18-step pipeline — the core product working end-to-end.
 
-**FRs covered:** FR-9, FR-10, FR-11, FR-12 (consumed), FR-13, FR-14, FR-15, FR-16, FR-19, FR-22, FR-23, FR-24, FR-25, FR-40, NFR-Perf, NFR-Rel, NFR-FilterAccuracy
+**FRs covered:** FR-9, FR-10, FR-11, FR-12 (consumed), FR-12a (consumed), FR-12c (consumed), FR-13, FR-14, FR-15, FR-16, FR-19, FR-22, FR-23, FR-24, FR-25, FR-40, NFR-Perf, NFR-Rel, NFR-FilterAccuracy
 
 ---
 
 ### Epic 5: Edit/Delete Propagation, Full Observability & Stats API
-Operator can see edits and deletions reflected in destination channels in near real-time, and can trace every message's full lifecycle through structured JSON logs with correlation IDs — completing production-grade operation and providing the backend APIs the dashboard needs.
+Operator can see edits and deletions reflected in destination channels in near real-time, trace every message's full lifecycle through structured JSON logs with correlation IDs, and manage admin actions via REST (including manual cache refresh endpoint).
 
-**FRs covered:** FR-19 (mapping sweeper), FR-20, FR-21, FR-26 (full), FR-27, FR-28 (full), FR-44 (backend SSE infrastructure), NFR-Obs, NFR-Propagation
+**FRs covered:** FR-12b (endpoint), FR-19 (mapping sweeper), FR-20, FR-21, FR-26 (full), FR-27, FR-28 (full), FR-44 (backend SSE infrastructure), NFR-Obs, NFR-Propagation
 
 ---
 
 ### Epic 6: Web Admin Dashboard
 Operator can manage every aspect of the service through a browser — registering sources, creating rules, monitoring live logs, and verifying the pipeline is working — without ever touching curl.
 
-**FRs covered:** FR-42, FR-43, FR-44 (S7 screen), FR-45, UX-DR1 through UX-DR25
+**FRs covered:** FR-42, FR-43, FR-44 (S7 screen), FR-45, UX-DR1 through UX-DR28
+
+---
+
+### Epic 7: Session Management UI & Multi-Tier Cache Control
+Operator can authenticate, verify, and terminate Telegram MTProto sessions directly from the Web Admin Settings page without CLI access or restarts, and trigger or automate multi-tier cache rebuilds (instant event rebuild, manual refresh endpoint/button, and fallback background coroutine).
+
+**FRs covered:** FR-12a, FR-12b, FR-12c, FR-46, FR-47, FR-48, FR-49, FR-50, FR-51
 
 ---
 
@@ -669,17 +710,25 @@ So that I can rewrite forwarded text — removing competitor names, swapping lin
 
 ---
 
-### Story 3.3: Atomic Rule Cache & Cache Refresher
+### Story 3.3: Multi-Tier Rule Cache & Cache Refresher
 
 As a Channel Operator,
-I want rule changes I make via the API to take effect in the forwarding pipeline within 60 seconds without restarting the service,
-So that I can tune filters and see results in near real-time.
+I want rule changes I make via the API to take effect in the forwarding pipeline instantly (<1s) and have a manual refresh endpoint as well as a background safety net,
+So that configuration changes take effect immediately without needing service restarts or periodic delays.
 
 **Acceptance Criteria:**
 
 **Given** active Forwarding Rules and their Replacement Rules exist in MongoDB
-**When** the cache refresher coroutine runs (every `HOT_RELOAD_INTERVAL` seconds, default 30)
-**Then** it fetches all four collections (sources, source_folders, forwarding_rules, replacement_rules) in sequence, builds a new frozen `RuleCache` dataclass, and replaces `CacheHolder.current` in a single Python assignment — atomic under the asyncio event loop; the new cache is visible to the next pipeline dispatch
+**When** the periodic cache refresher coroutine runs (every `HOT_RELOAD_INTERVAL` seconds, default 30)
+**Then** it fetches all four collections (sources, source_folders, forwarding_rules, replacement_rules) in sequence, builds a new frozen `RuleCache` dataclass, and replaces `CacheHolder.current` in a single Python assignment — atomic under the asyncio event loop; the new cache is visible to the next pipeline dispatch (FR-12c)
+
+**Given** any REST API operation mutates rules, replacement rules, sources, or folders (Create, Update, Delete, Enable, Disable)
+**When** the DB operation completes successfully
+**Then** the system immediately triggers an asynchronous in-memory rebuild of `RuleCache` and atomically swaps `CacheHolder.current` in <1 second without blocking the API HTTP response (FR-12a)
+
+**Given** the operator wants to force a cache refresh out-of-band or via the admin API
+**When** `POST /api/v1/admin/cache/refresh` (or `/api/v1/cache/refresh`) is called
+**Then** HTTP 200 is returned with cache metadata (`version`, `rule_count`, `source_count`, `refreshed_at` timestamp) after triggering an immediate `build_rule_cache()` call (FR-12b)
 
 **Given** rules contain regex patterns in `block_keywords`, `allow_keywords`, or `replacement_rules`
 **When** the cache is refreshed
@@ -689,15 +738,11 @@ So that I can tune filters and see results in near real-time.
 **When** the cache is refreshed
 **Then** an ERROR is logged with `rule_id` and the offending pattern; that pattern is skipped (no-op) for this snapshot's lifetime; the refresh completes normally and all other rules load correctly
 
-**Given** a rule is created or updated via the API
-**When** at most two `HOT_RELOAD_INTERVAL` periods elapse (worst case: change made just after a refresh)
-**Then** the new rule configuration is reflected in all subsequent pipeline dispatches (end-to-end staleness ≤ 60s per NFR-RuleChange)
-
 **Given** MongoDB is temporarily unreachable during a refresh attempt
 **When** the refresh fails
 **Then** `CacheHolder.current` retains the last valid snapshot; a WARNING is logged with `{"event": "cache_refresh_failed", "last_successful_refresh": "<ISO timestamp>", ...}`; the refresher retries on the next interval without crashing
 
-**And** `RuleCache` frozen dataclass and `CacheHolder` in `infrastructure/cache/rule_cache.py`; `RuleCache` fields: `sources: dict[ObjectId, Source]`, `folders: dict[ObjectId, SourceFolder]`, `rules: list[ForwardingRule]` (active only), `replacements: dict[ObjectId, list[ReplacementRule]]`, `compiled_patterns: dict[ObjectId, CompiledPatterns]`, `version: int`; `cache_refresher` coroutine in `infrastructure/cache/cache_refresher.py`; the cache refresher asyncio task replaces the stub from Story 1.3 in the `lifespan` context manager
+**And** `RuleCache` frozen dataclass and `CacheHolder` in `infrastructure/cache/rule_cache.py`; `RuleCache` fields: `sources: dict[ObjectId, Source]`, `folders: dict[ObjectId, SourceFolder]`, `rules: list[ForwardingRule]` (active only), `replacements: dict[ObjectId, list[ReplacementRule]]`, `compiled_patterns: dict[ObjectId, CompiledPatterns]`, `version: int`; `cache_refresher` coroutine in `infrastructure/cache/cache_refresher.py`; FastAPI admin router in `api/routers/admin.py` exposing `POST /api/v1/admin/cache/refresh`; mutation hooks calling `trigger_cache_rebuild()` wired across rule, source, folder, and replacement routers
 
 ---
 
@@ -1107,6 +1152,10 @@ So that I can assess bot status at a glance and adjust operational settings with
 **When** the page loads
 **Then** it fetches `GET /api/v1/health` (reused from cache) and displays: service version, uptime, MongoDB connection string (masked), session TTL; a "Logout" button calls `POST /api/v1/auth/logout` and redirects to `/login`
 
+**Given** the operator is on Settings page (S8) or the header action bar
+**When** the operator clicks the **"Refresh Cache"** button
+**Then** `POST /api/v1/admin/cache/refresh` is called; on HTTP 200 a success toast notification appears surfacing the refreshed cache metadata (`version`, `rule_count`, `source_count`, `refreshed_at` timestamp); on failure an error toast appears (FR-12b)
+
 **Given** the operator clicks the theme toggle in the sidebar
 **When** the click fires
 **Then** `data-theme` on `<html>` toggles between `light` and `dark`; the chosen theme is saved to `localStorage` under key `fb-theme`; on next page load the persisted theme is applied before first render (no flash of wrong theme)
@@ -1220,3 +1269,81 @@ So that I can diagnose forwarding issues in real time and get the bot configured
 **Then** the last 200 historical log entries are loaded and displayed; the SSE stream then appends new entries in real time without duplicating the historical batch
 
 **And** `web/src/pages/Logs.tsx` implements the screen; `web/src/hooks/useSseLog.ts` encapsulates the `EventSource` lifecycle (open, close on unmount, reconnect banner state); `web/src/components/FirstRunWizard.tsx` implements the 3-step dialog using a shadcn `Dialog`; all SSE and filter logic is tested with the existing structlog ring buffer from Story 5.2
+
+---
+
+## Epic 7: Session Management UI & Multi-Tier Cache Control
+
+### Story 7.1: Multi-Tier Rule Cache Rebuild & Admin Refresh API
+
+As a Channel Operator,
+I want rule changes made via the API to take effect in the forwarding pipeline instantly (<1s) and have a manual refresh endpoint as well as a background safety net,
+So that configuration changes take effect immediately without needing service restarts or periodic delays.
+
+**Acceptance Criteria:**
+
+**Given** active Forwarding Rules and Replacement Rules exist in MongoDB
+**When** any REST API operation mutates rules, replacement rules, sources, or folders (Create, Update, Delete, Enable, Disable)
+**Then** the system immediately triggers an asynchronous in-memory rebuild of `RuleCache` and atomically swaps `CacheHolder.current` in <1 second without blocking the API HTTP response (FR-12a)
+
+**Given** the operator wants to force a cache refresh out-of-band or via the admin API
+**When** `POST /api/v1/admin/cache/refresh` (or `/api/v1/cache/refresh`) is called
+**Then** HTTP 200 is returned with cache metadata (`version`, `rule_count`, `source_count`, `refreshed_at` timestamp) after triggering an immediate `build_rule_cache()` call (FR-12b)
+
+**Given** MongoDB is temporarily unreachable during a refresh attempt
+**When** the periodic background refresher runs (`HOT_RELOAD_INTERVAL` default 30s)
+**Then** `CacheHolder.current` retains the last valid snapshot, logs a WARNING `cache_refresh_failed`, and retries on the next interval without crashing (FR-12c)
+
+**And** `RuleCache` frozen dataclass and `CacheHolder` in `infrastructure/cache/rule_cache.py`; `cache_refresher` coroutine in `infrastructure/cache/cache_refresher.py`; FastAPI admin router in `api/routers/admin.py` exposing `POST /api/v1/admin/cache/refresh`; mutation hooks calling `trigger_cache_rebuild()` wired across rule, source, folder, and replacement routers
+
+---
+
+### Story 7.2: Telegram Session Management Backend API & Lifecycle Methods
+
+As a Channel Operator,
+I want backend endpoints to check Telegram session status, request/verify OTPs, submit 2FA passwords, and terminate active sessions,
+So that session lifecycle actions can be executed dynamically at runtime without restarting the process.
+
+**Acceptance Criteria:**
+
+**Given** the Web Admin Dashboard requests Telegram session status
+**When** `GET /api/v1/telegram/auth/status` is called
+**Then** HTTP 200 returns `{ "connected": bool, "phone": "<masked or null>", "phone_required": bool, "session_path": "<path>" }` (FR-46)
+
+**Given** the operator initiates Telegram login
+**When** `POST /api/v1/telegram/auth/start` is called with `{ "phone": "+1234567890" }`
+**Then** Telethon `send_code_request()` is called, `phone_code_hash` is saved in memory, and HTTP 200 returns `{ "status": "code_sent" }` (FR-47)
+
+**Given** the operator submits an OTP code
+**When** `POST /api/v1/telegram/auth/verify` is called with `{ "otp": "123456" }`
+**Then** Telethon `sign_in()` completes, `.session` file is written, `TelegramClientHolder.reconnect()` is invoked, and HTTP 200 returns `{ "status": "connected" }` (FR-47); if 2FA password is required, HTTP 202 `{ "requires_2fa": true }` is returned (FR-48)
+
+**Given** an active session exists and the operator chooses to terminate
+**When** `POST /api/v1/telegram/auth/terminate` is called
+**Then** `TelegramClientHolder._connected` is set to `False` (new events dropped), Telethon `client.log_out()` is called, the `.session` file is deleted, and HTTP 200 returns `{ "status": "terminated" }` (FR-49, FR-51)
+
+**And** `TelegramClientHolder` methods `reconnect()` and `terminate()` in `infrastructure/telegram/client.py`; router mounted at `/api/v1/telegram/auth` in `api/routers/telegram_auth.py`
+
+---
+
+### Story 7.3: Web Admin Settings Page UI for Cache Refresh & Telegram Session Control
+
+As a Channel Operator,
+I want UI controls on the Settings page (S8) and top header bar to trigger cache refreshes and manage the Telegram session,
+So that I can control caching and session authentication directly from my browser.
+
+**Acceptance Criteria:**
+
+**Given** the operator is on Settings (S8) or the header action bar
+**When** the operator clicks the **"Refresh Cache"** button
+**Then** `POST /api/v1/admin/cache/refresh` is called; on HTTP 200 a success toast notification appears with `version`, `rule_count`, `source_count`, and `refreshed_at` timestamp (FR-12b)
+
+**Given** the operator navigates to `/settings` (S8)
+**When** the Telegram Session Card renders
+**Then** it fetches `GET /api/v1/telegram/auth/status`; if connected, displays a green "CONNECTED" badge and "Terminate Session" button; if disconnected, displays a red "DISCONNECTED" badge and OTP connect form (FR-46)
+
+**Given** the operator clicks "Terminate Session"
+**When** the confirmation modal opens and operator types `terminate`
+**Then** `POST /api/v1/telegram/auth/terminate` is called, the modal closes, and the session status badge updates to "DISCONNECTED" (FR-49)
+
+**And** `web/src/pages/Settings.tsx` updated with Telegram Session Card & Refresh Cache button; `web/src/components/HeaderBar.tsx` updated with Refresh Cache button; API client functions added to `web/src/api/telegramAuth.ts`

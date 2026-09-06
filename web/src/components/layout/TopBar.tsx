@@ -1,8 +1,11 @@
 import { useLocation, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { healthApi } from "@/api/health";
+import { adminApi } from "@/api/admin";
 import { queryKeys } from "@/lib/queryKeys";
-import { ChevronRight, AlertTriangle, Menu } from "lucide-react";
+import { parseApiError } from "@/lib/utils";
+import { toast } from "sonner";
+import { ChevronRight, AlertTriangle, Menu, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
@@ -12,7 +15,25 @@ interface TopBarProps {
 
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [timeAgo, setTimeAgo] = useState<string>("");
+
+  // Refresh Cache mutation
+  const refreshCacheMutation = useMutation({
+    mutationFn: adminApi.refreshCache,
+    onSuccess: (data) => {
+      const version = data.cache?.version ?? data.version ?? 0;
+      const ruleCount = data.cache?.rule_count ?? data.rule_count ?? 0;
+      const sourceCount = data.cache?.source_count ?? data.source_count ?? 0;
+      const refreshedAt = data.cache?.refreshed_at ?? data.refreshed_at ?? new Date().toISOString();
+      const timeStr = new Date(refreshedAt).toLocaleTimeString();
+      toast.success(`Cache rebuilt (v${version}) — ${ruleCount} rules, ${sourceCount} sources at ${timeStr}`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.health.cache() });
+    },
+    onError: (err) => {
+      toast.error(parseApiError(err));
+    },
+  });
 
   // Telegram connection check (refetch every 10s)
   const { data: telegramData } = useQuery({
@@ -76,7 +97,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         >
           <Menu className="w-4 h-4" />
         </button>
- 
+
         <nav className="hidden sm:flex items-center gap-1 text-xs font-medium tracking-tight">
           {breadcrumbs.map((crumb, idx) => {
             const isLast = idx === breadcrumbs.length - 1;
@@ -95,7 +116,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           })}
         </nav>
       </div>
- 
+
       {/* Health Status Dots & Warning Banners */}
       <div className="flex items-center gap-3">
         {/* Rules Cache Stale Warning */}
@@ -105,7 +126,19 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
             <span>Rules cache stale (last refresh {timeAgo} ago)</span>
           </div>
         )}
- 
+
+        {/* Refresh Cache Button */}
+        <button
+          onClick={() => refreshCacheMutation.mutate()}
+          disabled={refreshCacheMutation.isPending}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="Refresh Cache"
+          title="Refresh Rule Cache"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", refreshCacheMutation.isPending && "animate-spin")} />
+          <span className="hidden sm:inline">Refresh Cache</span>
+        </button>
+
         {/* Telegram status dot */}
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg border border-border bg-muted-bg/50">
           <div className="relative flex h-1.5 w-1.5">

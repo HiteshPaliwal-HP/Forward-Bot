@@ -134,9 +134,66 @@ async def test_disconnect(mock_telegram_client, mock_settings):
     
     holder.client = mock_client_instance
     holder.status = "connected"
+    holder._connected = True
 
     await holder.disconnect()
 
     assert holder.status == "disconnected"
+    assert holder._connected is False
     assert holder.client is None
     mock_client_instance.disconnect.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("forward_bot.infrastructure.telegram.client.TelegramClient")
+async def test_reconnect_success(mock_telegram_client, mock_settings):
+    """Test successful reconnection via reconnect()."""
+    holder = TelegramClientHolder()
+    
+    session_file = Path(mock_settings.telegram_session_path)
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    session_file.touch()
+
+    mock_client_instance = AsyncMock()
+    mock_client_instance.connect = AsyncMock()
+    mock_client_instance.is_user_authorized = AsyncMock(return_value=True)
+    mock_client_instance.is_connected = MagicMock(return_value=True)
+    mock_telegram_client.return_value = mock_client_instance
+
+    await holder.reconnect(mock_settings)
+
+    assert holder.status == "connected"
+    assert holder._connected is True
+    assert holder.client is not None
+    assert holder.is_connected is True
+    mock_client_instance.connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("forward_bot.infrastructure.telegram.client.TelegramClient")
+async def test_terminate(mock_telegram_client, mock_settings):
+    """Test lifecycle termination: flag reset, log_out, disconnect, and session file deletion."""
+    holder = TelegramClientHolder()
+    holder.settings = mock_settings
+    
+    session_file = Path(mock_settings.telegram_session_path)
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    session_file.touch()
+
+    mock_client_instance = AsyncMock()
+    mock_client_instance.is_connected = MagicMock(return_value=True)
+    mock_client_instance.log_out = AsyncMock()
+    mock_client_instance.disconnect = AsyncMock()
+    holder.client = mock_client_instance
+    holder.status = "connected"
+    holder._connected = True
+
+    await holder.terminate()
+
+    assert holder.status == "disconnected"
+    assert holder._connected is False
+    assert holder.client is None
+    mock_client_instance.log_out.assert_called_once()
+    mock_client_instance.disconnect.assert_called_once()
+    assert not session_file.exists()
+

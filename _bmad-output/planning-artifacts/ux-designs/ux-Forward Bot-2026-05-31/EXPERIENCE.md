@@ -1,7 +1,7 @@
 ---
 name: Forward Bot
 status: final
-updated: 2026-05-31
+updated: 2026-09-06
 sources:
   - ../../prds/prd-forward-bot-2026-05-31/prd.md
   - ../../prds/prd-forward-bot-2026-05-31/addendum.md
@@ -36,7 +36,7 @@ Five top-level sidebar surfaces, plus modal/secondary surfaces, plus Login. From
 | **S5 Source Create/Edit** | `/sources/new`, `/sources/{id}` | Telegram reference + Display Name + Type + Folder. Delete blocked if active rules reference. |
 | **S6 Folder Modals** | S4 "+ New Folder" / rename / delete | Modal CRUD; no dedicated page. |
 | **S7 Logs** | `/logs` / sidebar / `g l` / log row in S1 | Live tail (SSE) + filter by event + correlation_id search. Reads only. The verification surface. → [mockup](mockups/key-s7-logs.html) |
-| **S8 Settings** | `/settings` / sidebar | Telegram status + Reconnect, env-var summary (read-only), theme toggle, About. |
+| **S8 Settings** | `/settings` / sidebar | Telegram session management card (connect / OTP / 2FA / terminate), env-var summary (read-only), theme toggle, About. **Enhanced (2026-09-06):** Full in-browser OTP auth flow and session termination (FR-46–FR-51). |
 
 **Routing:** React Router; deep-linkable URLs (every state worth resuming is in the URL — surface, filters, expanded panels on S3 via query params).
 
@@ -95,6 +95,20 @@ Behavioral. Visual specs live in `DESIGN.md.Components` (or in shadcn defaults, 
 | **Filter panel summary disambiguation** | S3 Filters panel header | Allowlist empty (default = allow all) renders as `"Allow: all"`. Explicit empty allowlist (`[]` set by operator) renders as `"Allow: 0 (none allowed)"`. Media all-types renders as `"Media: all"`; explicit subset renders as `"Media: photo only"`. |
 | **Reconnect button (S8)** | Settings → Telegram, degraded banner | Button states: idle = `[Reconnect]`; in-flight = `[Reconnecting…]` with spinner, disabled; success = green checkmark for 2s then revert to idle; failure = button shakes once, toast `"Reconnect failed — see logs."` with `[Open logs]` action button on toast. |
 
+### Session Management Card (S8) — FR-46 through FR-51
+
+The Settings page contains a dedicated **Telegram Session** card. It is the only surface that shows the full session state machine; the top-bar dot is a read-only compact mirror of the same state.
+
+| Component | Use | Behavioral rules |
+|---|---|---|
+| **Session card — CONNECTED state** | S8 when session active | Uses `{components.session-card-connected}` styling (green tinted border + background). Displays: green `circle-check` icon, bold "CONNECTED" label in `{colors.state-success-foreground}`, the phone number (last 4 digits visible, rest masked), and session file path (read-only mono text). Action: **[Terminate Session]** button (destructive variant). Polling every 10s via TanStack Query `refetchInterval`. |
+| **Session card — DISCONNECTED state** | S8 when no session / session invalidated | Uses `{components.session-card-disconnected}` styling (red tinted border + background). Displays: red `circle-x` icon, bold "DISCONNECTED" label in `{colors.state-error}`. When `phone_required: true` (env var absent): an editable `tel` input (placeholder `+1234567890`, E.164 format, client-side validates `+` prefix + numeric-only). When phone is pre-filled from env: phone shown read-only, masked. Action: **[Send OTP]** button (primary variant). |
+| **Session card — OTP step** | S8 after Send OTP clicked | Card transitions in-place (no navigation). Displays: status `"OTP sent to +1•••••┆5"` in muted text, a **6-box OTP input** (`{components.session-otp-input}`) — each box accepts one digit, focus auto-advances. **[Connect]** button disabled until all 6 boxes filled. **[Send OTP]** button disabled for 60s post-click (client-side cooldown; countdown shown). OTP fields accept only numeric digits. On error: ring flips to `{components.session-otp-input.error-ring}`, inline error below the input (see Voice and Tone patterns). |
+| **Session card — 2FA step** | S8 after OTP submit when `requires_2fa: true` (HTTP 202) | OTP input area replaced by a `password`-type shadcn `Input` labelled "Telegram Cloud Password". Help text: "This account requires Two-Factor Authentication. Enter your Telegram cloud password." **[Submit]** button (primary variant). Password field is masked; no show/hide toggle (internal tool). On wrong password: inline error `"Cloud password: incorrect — try again."` 2FA field persists active. |
+| **Terminate session — confirmation modal** | S8 CONNECTED card → [Terminate Session] click | Opens shadcn `AlertDialog`. Header: "Terminate Telegram Session?". Body explains: "This will log out the MTProto session and delete the session file. All in-flight forwards will be dropped." Below body: a `{components.session-terminate-danger-zone}` section containing an `Input` with label `"Type terminate to confirm"`. The **[Confirm Terminate]** button (destructive variant) is **disabled** until the input matches `terminate` exactly (case-insensitive). **[Cancel]** (ghost variant) aborts without side-effects. |
+| **OTP cooldown countdown** | S8 OTP step | A small mono `{colors.foreground-muted}` countdown beneath the disabled [Send OTP] button: `"Resend available in 45s"`. Counts down in 1s increments (client-side interval). At 0s, [Send OTP] re-enables with label `"Resend OTP"`. |
+| **Session status dot (top bar)** | All authed screens | The existing Telegram connection dot in the top bar reflects session state: green = CONNECTED, red = DISCONNECTED, amber pulse = auth in progress / reconnecting. It is a read-only compact mirror of the session card; clicking it navigates to `/settings`. |
+
 ## State Patterns
 
 Every list surface and form surface has an opinion about each of these states. Inherit shadcn's `Skeleton`, `Alert`, `Toast` primitives.
@@ -114,6 +128,13 @@ Every list surface and form surface has an opinion about each of these states. I
 | **Auth expired (cookie lapse mid-session)** | Any authed surface | Any API call returning 401 triggers redirect to `/login?return=<current-path>` with the protected URL preserved. On successful re-auth, return to the saved URL. Toast on the login page: `"Session expired — sign in to continue."` |
 | **Log ring-buffer floor** | S7 Logs historical pane | When operator scrolls past the in-memory buffer's oldest entry (default 1h, max 24h), surface an inline note: `"Beyond 1h — older events not retained."` Render at the end of the historical pane, not a separate page. |
 | **Cache-refresh failure** | Global (top bar) | When the worker's 30s cache-refresh fails (logged as `cache_refresh_failed`), dashboard surfaces a subdued warning pill in the top bar next to the Telegram dot: `{colors.state-warning}` background, copy `"Rules cache stale (last refresh 4m ago)"`. Clears when next refresh succeeds. |
+| **OTP send in-flight** | S8 session card | [Send OTP] button enters `[Sending…]` with spinner. Disabled until server responds. On success: OTP step card variant renders. On failure: button re-enables, inline error below the phone input. |
+| **OTP verify in-flight** | S8 session card OTP step | [Connect] button enters `[Connecting…]` with spinner. OTP boxes become read-only. On 2FA required (HTTP 202): transition to 2FA step without error. On error (wrong OTP, expired OTP): boxes clear, re-editable, inline error displayed. |
+| **OTP expired** | S8 session card OTP step | When polling detects the `phone_code_hash` is gone (backend cleared after 10 min) OR the server returns `otp_expired`: inline note below OTP boxes: `"OTP expired — start again."` [Send OTP] re-enables immediately. |
+| **Auth in progress (concurrent)** | S8 session card | If a prior `/start` is still active (server 409 `auth_in_progress`): card shows the OTP step with the cooldown timer already running (remaining seconds from the 409 response body). `"OTP already sent — check your Telegram app."` in muted text. |
+| **Max OTP retries reached** | S8 session card OTP step | After 3 failed OTP attempts, server returns `too_many_attempts` with Telegram's error detail. OTP boxes disabled, [Connect] disabled. Inline error shows the Telegram message verbatim. Operator must reload the page to retry. |
+| **Terminate in-flight** | S8 terminate modal | [Confirm Terminate] enters `[Terminating…]` with spinner; modal cannot be dismissed. On success: modal closes, card transitions to DISCONNECTED state, toast `"Session terminated. Worker stopped."` On failure: modal closes, toast destructive `"Terminate failed: <reason> — see logs."` |
+| **Session terminated drops** | S7 Logs | Events `telegram_session_terminated_drop` render using `{components.log-row-session-terminated-drop}` (warning amber stripe, `zap-off` icon, bold label "Session drop: in-flight event discarded"). These are expected during a deliberate termination — not errors. |
 
 ## Interaction Primitives
 
@@ -158,6 +179,8 @@ The journey draft promoted Logs from "diagnostic" to **the surface where the ope
   - `reply_parent_not_found` / `reply_target_missing` — warning severity, `{colors.state-warning}`, icon `corner-down-right` with a strike (`{components.log-row-reply-orphaned}`).
   - `flood_wait` — **new severity bucket** (rate-limited; not error, not forwarded). Uses `{colors.state-warning}` styling via `{components.log-row-flood-wait}`, icon `clock` with a pause modifier. Distinct from `degraded` — FloodWait is per-rule throttle, not system disconnection. Surfaced both inline in log rows AND as a top-bar pill (warning-tinted) alongside the Telegram dot when active.
   - `source_registered` / `source_resolved` / `folder_created` / `media_replacement_failed` — admin events. Surface in the log catalog if `event=admin` filter is enabled. `media_replacement_failed` uses error styling because it's a runtime failure that fell back to source photo.
+  - `telegram_session_terminated` — admin severity. Rendered with `{components.log-row-forwarded}` styling (green stripe, `log-out` icon) to signal this was a **deliberate operator action** — not a failure. Visible when `event=admin` filter is enabled.
+  - `telegram_session_terminated_drop` — warning severity, rendered with `{components.log-row-session-terminated-drop}` (warning amber stripe, `zap-off` icon, label `"Session drop: in-flight event discarded"`). Expected during a planned termination; not an error. Visible in the default stream.
 
 ## Key Flows
 
@@ -214,6 +237,30 @@ Failure: any wizard step fails → operator can skip and resume manually. Wizard
 4. Confirm. The **progress-bar toast** appears: "Disabling 1 of 12 forwards…" → "Disabling 8 of 12 forwards…" → completes.
 
 5. **[CLIMAX]** Summary toast: "Done. 11 disabled, 1 failed. [Show errors]". The operator clicks [Show errors] — inline panel under the bulk bar expands with the one failed row ID and reason: "rule_id=4f2a: 409 Conflict — already disabled." The operator shrugs (idempotency edge case, no actual problem), dismisses the toast, closes the laptop. *Partial failure surfaces the truth without forcing remediation; the operator decides what's a real problem.*
+
+---
+
+### Flow 4 — Hitesh reconnects after a session invalidation (Settings page auth flow)
+
+**Protagonist:** Hitesh, the operator. He sees the global degraded banner fire — "Telegram disconnected" — but the session file wasn't lost on restart; Telegram invalidated the session server-side (e.g., logged out from another device).
+
+**Goal:** Re-authenticate to Telegram from the browser, without SSH or a container restart, in under 3 minutes.
+
+**Surfaces touched:** S1 Dashboard → S8 Settings (session card).
+
+1. **Hitesh notices the banner.** The `{components.banner-degraded}` fires at the top of the Dashboard. Red badge, "Telegram disconnected — last event 2m ago". The Reconnect button at the top bar navigates him to `/settings`.
+
+2. **He lands on Settings.** The Telegram section shows the session card in `{components.session-card-disconnected}` state — red `circle-x` icon, bold "DISCONNECTED", phone pre-filled (masked) from `TELEGRAM_PHONE` env var. He clicks **[Send OTP]**.
+
+3. **OTP step renders.** Card transitions in-place to the OTP step. The [Send OTP] button disables with a `"Resend available in 59s"` countdown. Status line: `"OTP sent to +1•••••┆2"`. Six empty OTP boxes wait, each focused ring ready in `{components.session-otp-input.focused-ring}` (Forwarding Green).
+
+4. **Hitesh enters the OTP** from his Telegram app. Focus auto-advances box to box as he types. All six filled — [Connect] button enables (primary variant).
+
+5. **He hits [Connect].** Button enters `[Connecting…]` spinner state; OTP boxes freeze. Server calls `sign_in()` and triggers `TelegramClientHolder.reconnect()`. HTTP 200 returns `{ "status": "connected" }`.
+
+6. **[CLIMAX]** The card transitions in-place to `{components.session-card-connected}` — green `circle-check` icon, bold "CONNECTED", phone masked, session path shown. The global degraded banner dismisses. The top-bar dot turns green. Toast: `"Telegram session connected. Worker resumed."` *The operator never touched a terminal. The service resumed without a restart. The green card is the trust beat — same visual language as the green log-row in Flow 1, same verification posture.*
+
+7. **He switches to Logs** (`/logs`). Within ≤60s the cache refreshes and new `forwarded` rows start streaming. He closes the laptop.
 
 ---
 

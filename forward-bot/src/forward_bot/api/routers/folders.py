@@ -1,9 +1,11 @@
 """FastAPI router for folder management."""
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, status, Query, BackgroundTasks
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from forward_bot.api.dependencies.auth import get_current_operator
-from forward_bot.api.dependencies.providers import get_folder_repository, get_source_repository
+from forward_bot.api.dependencies.providers import get_folder_repository, get_source_repository, get_db
+from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
 from forward_bot.api.schemas.folder import (
     FolderCreateRequest,
     FolderUpdateRequest,
@@ -30,12 +32,15 @@ router = APIRouter(prefix="/api/v1/folders", tags=["folders"])
 )
 async def create_folder(
     payload: FolderCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     folder_repo: FolderRepository = Depends(get_folder_repository),
     _: str = Depends(get_current_operator),
 ) -> FolderResponse:
     """Creates a new folder with a unique name."""
     use_case = CreateFolder(folder_repo)
     folder = await use_case.execute(name=payload.name)
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return FolderResponse.from_entity(folder)
 
 
@@ -107,6 +112,8 @@ async def get_folder(
 async def rename_folder(
     folder_id: str,
     payload: FolderUpdateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     folder_repo: FolderRepository = Depends(get_folder_repository),
     _: str = Depends(get_current_operator),
 ) -> FolderResponse:
@@ -116,6 +123,7 @@ async def rename_folder(
 
     use_case = RenameFolder(folder_repo)
     folder = await use_case.execute(folder_id=folder_id, new_name=payload.name)
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return FolderResponse.from_entity(folder)
 
 
@@ -126,6 +134,8 @@ async def rename_folder(
 )
 async def delete_folder(
     folder_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     folder_repo: FolderRepository = Depends(get_folder_repository),
     _: str = Depends(get_current_operator),
 ) -> None:
@@ -135,3 +145,5 @@ async def delete_folder(
 
     use_case = DeleteFolder(folder_repo)
     await use_case.execute(folder_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
+

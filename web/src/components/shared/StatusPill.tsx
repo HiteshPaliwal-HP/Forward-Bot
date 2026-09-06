@@ -31,7 +31,7 @@ const CONFIG = {
 };
 
 export function StatusPill({ status, className }: StatusPillProps) {
-  const config = CONFIG[status];
+  const config = CONFIG[status] || CONFIG.inactive;
   const Icon = config.icon;
 
   return (

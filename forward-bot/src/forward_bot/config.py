@@ -41,6 +41,10 @@ class Settings(BaseSettings):
         default="./data/telegram.session",
         description="Path to store Telegram session data",
     )
+    telegram_phone: str | None = Field(
+        default=None,
+        description="Optional pre-configured Telegram phone number",
+    )
 
     # Media handling
     media_replacement_base_dir: str = Field(

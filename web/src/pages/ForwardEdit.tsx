@@ -12,6 +12,7 @@ import { mediaApi } from "@/api/media";
 import { telegramApi } from "@/api/telegram";
 import { queryKeys } from "@/lib/queryKeys";
 import { CollapsiblePanel, ActivationBanner, Button } from "@/components/shared";
+import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { 
   Save, 
@@ -110,6 +111,28 @@ export default function ForwardEdit() {
         setDestInputMode("manual");
       }
     }
+  }, [tgDialogsData]);
+
+  // Memoized options for SearchableSelect
+  const sourceOptions: SearchableSelectOption[] = useMemo(() => {
+    if (!sourcesData?.items) return [];
+    return sourcesData.items.map(src => ({
+      value: src.id,
+      label: src.display_name,
+      sublabel: src.telegram_username ? `@${src.telegram_username}` : `ID: ${src.telegram_id}`,
+    }));
+  }, [sourcesData]);
+
+  const destOptions: SearchableSelectOption[] = useMemo(() => {
+    if (!tgDialogsData?.dialogs) return [];
+    return tgDialogsData.dialogs.map(d => {
+      const ref = d.username ? `@${d.username}` : d.id;
+      return {
+        value: ref,
+        label: d.name,
+        sublabel: `${d.username ? `@${d.username}` : `ID: ${d.id}`} — ${d.is_channel ? "Channel" : "Group"}`,
+      };
+    });
   }, [tgDialogsData]);
 
   // Form State
@@ -461,19 +484,14 @@ export default function ForwardEdit() {
               <label htmlFor="source_id" className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
                 Source Channel
               </label>
-              <select
+              <SearchableSelect
                 id="source_id"
+                options={sourceOptions}
                 value={formData.source_id}
-                onChange={(e) => setFormData(prev => ({ ...prev, source_id: e.target.value }))}
-                className="w-full h-10 px-3 border border-border rounded-md bg-card text-foreground focus:ring-primary focus:border-primary text-sm font-medium"
-              >
-                <option value="">Select a telegram source...</option>
-                {sourcesData?.items.map(src => (
-                  <option key={src.id} value={src.id}>
-                    {src.display_name} {src.telegram_username ? `(@${src.telegram_username})` : `(${src.telegram_id})`}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setFormData(prev => ({ ...prev, source_id: val }))}
+                placeholder="Select a telegram source..."
+                searchPlaceholder="Type to filter sources..."
+              />
               {apiErrors["source_id"] && (
                 <p className="text-error text-xs mt-1 font-semibold">{apiErrors["source_id"]}</p>
               )}
@@ -522,27 +540,14 @@ export default function ForwardEdit() {
                       <span>Loading dialogs...</span>
                     </div>
                   ) : (
-                    <select
+                    <SearchableSelect
                       id="destination_channel_select"
+                      options={destOptions}
                       value={formData.destination_channel}
-                      onChange={(e) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          destination_channel: e.target.value
-                        }));
-                      }}
-                      className="w-full h-10 px-3 border border-border rounded-md bg-card text-foreground focus:ring-primary focus:border-primary text-sm font-medium cursor-pointer"
-                    >
-                      <option value="">Select destination channel/group...</option>
-                      {tgDialogsData.dialogs.map(d => {
-                        const ref = d.username ? `@${d.username}` : d.id;
-                        return (
-                          <option key={d.id} value={ref}>
-                            {d.name} {d.username ? `(@${d.username})` : `(ID: ${d.id})`} — {d.is_channel ? "Channel" : "Group"}
-                          </option>
-                        );
-                      })}
-                    </select>
+                      onChange={(val) => setFormData(prev => ({ ...prev, destination_channel: val }))}
+                      placeholder="Select destination channel/group..."
+                      searchPlaceholder="Type channel name, ID, or @username..."
+                    />
                   )}
                 </div>
               ) : (

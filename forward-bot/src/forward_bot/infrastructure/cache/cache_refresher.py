@@ -121,7 +121,8 @@ async def build_rule_cache(db, version: int) -> RuleCache:
                         field="block_keywords",
                         error=str(e),
                     )
-                    # Skip this pattern — no-op for this snapshot's lifetime
+                    # Append None to keep indexing aligned with rule.block_keywords
+                    patterns.block_patterns.append(None)
 
             # Compile allow_keywords
             for kw in rule.allow_keywords:
@@ -135,7 +136,8 @@ async def build_rule_cache(db, version: int) -> RuleCache:
                         field="allow_keywords",
                         error=str(e),
                     )
-                    # Skip this pattern — no-op for this snapshot's lifetime
+                    # Append None to keep indexing aligned with rule.allow_keywords
+                    patterns.allow_patterns.append(None)
 
         # Compile replacement rule search_text patterns (regex mode only)
         for rr in replacements.get(rule.id, []):
@@ -168,6 +170,54 @@ async def build_rule_cache(db, version: int) -> RuleCache:
     )
 
 
+_rebuild_lock: asyncio.Lock | None = None
+
+def _get_rebuild_lock() -> asyncio.Lock:
+    global _rebuild_lock
+    if _rebuild_lock is None:
+        _rebuild_lock = asyncio.Lock()
+    return _rebuild_lock
+
+
+async def trigger_cache_rebuild(db) -> RuleCache:
+    """Trigger an on-demand or background rebuild of the RuleCache snapshot.
+
+    Serializes concurrent execution using a module-level asyncio.Lock().
+    Increments the cache version (CacheHolder.current.version + 1).
+    Catches and logs any exceptions, retaining the current snapshot on failure.
+
+    Args:
+        db: Motor AsyncIOMotorDatabase instance.
+
+    Returns:
+        The updated (or retained on error) RuleCache snapshot.
+    """
+    async with _get_rebuild_lock():
+        try:
+            next_version = CacheHolder.current.version + 1
+            new_cache = await build_rule_cache(db, next_version)
+            CacheHolder.current = new_cache
+            logger.info(
+                "cache_refreshed",
+                version=new_cache.version,
+                rule_count=len(new_cache.rules),
+                source_count=len(new_cache.sources),
+                folder_count=len(new_cache.folders),
+            )
+        except Exception as e:
+            last_successful = CacheHolder.current.refreshed_at
+            logger.warning(
+                "cache_refresh_failed",
+                error=str(e),
+                last_successful_refresh=(
+                    last_successful.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if last_successful
+                    else None
+                ),
+            )
+        return CacheHolder.current
+
+
 async def run_cache_refresher(settings, db) -> None:
     """Background coroutine: refreshes ``RuleCache`` every ``HOT_RELOAD_INTERVAL`` seconds.
 
@@ -192,41 +242,14 @@ async def run_cache_refresher(settings, db) -> None:
         settings: Application ``Settings`` instance with ``hot_reload_interval``.
         db:       Motor ``AsyncIOMotorDatabase`` instance.
     """
-    version = 1
-    last_successful_refresh: datetime | None = None
     logger.info("cache_refresher_started", hot_reload_interval=settings.hot_reload_interval)
 
     while True:
         try:
             # Sleep first — ensures MongoDB is ready before the initial fetch
             await asyncio.sleep(settings.hot_reload_interval)
-
-            new_cache = await build_rule_cache(db, version)
-            CacheHolder.current = new_cache          # ← atomic under asyncio event loop
-            last_successful_refresh = new_cache.refreshed_at
-            version += 1
-
-            logger.info(
-                "cache_refreshed",
-                version=new_cache.version,
-                rule_count=len(new_cache.rules),
-                source_count=len(new_cache.sources),
-                folder_count=len(new_cache.folders),
-            )
-
+            await trigger_cache_rebuild(db)
         except asyncio.CancelledError:
             logger.info("cache_refresher_stopped")
             raise
 
-        except Exception as e:
-            logger.warning(
-                "cache_refresh_failed",
-                error=str(e),
-                last_successful_refresh=(
-                    last_successful_refresh.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    if last_successful_refresh
-                    else None
-                ),
-            )
-            # Retain CacheHolder.current (last valid snapshot) — do NOT clear it.
-            # The loop continues on the next interval (AC-5).

@@ -1,13 +1,16 @@
 """FastAPI router for Forwarding Rule CRUD and enable/disable operations."""
-from fastapi import APIRouter, Depends, Query, status, HTTPException
+from fastapi import APIRouter, Depends, Query, status, HTTPException, BackgroundTasks
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from forward_bot.api.dependencies.auth import get_current_operator
 from forward_bot.api.dependencies.providers import (
+    get_db,
     get_rule_repository,
     get_source_repository,
     get_replacement_repository,
 )
+from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
 from forward_bot.api.schemas.rule import (
     ForwardingRuleCreateRequest,
     ForwardingRuleUpdateRequest,
@@ -47,6 +50,8 @@ router = APIRouter(prefix="/api/v1/rules", tags=["rules"])
 )
 async def create_rule(
     payload: ForwardingRuleCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     source_repo: SourceRepository = Depends(get_source_repository),
     _: str = Depends(get_current_operator),
@@ -54,7 +59,9 @@ async def create_rule(
     """Create a new forwarding rule. Source must exist; self-referential rules are rejected."""
     use_case = CreateRule(rule_repo, source_repo)
     rule = await use_case.execute(payload.model_dump())
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return ForwardingRuleResponse.from_entity(rule)
+
 
 
 @router.get(
@@ -137,6 +144,8 @@ async def get_rule(
 async def update_rule(
     rule_id: str,
     payload: ForwardingRuleUpdateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     source_repo: SourceRepository = Depends(get_source_repository),
     _: str = Depends(get_current_operator),
@@ -144,6 +153,7 @@ async def update_rule(
     """Replace all fields of a forwarding rule. Same validation rules as POST."""
     use_case = UpdateRule(rule_repo, source_repo)
     rule = await use_case.execute(rule_id, payload.model_dump())
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return ForwardingRuleResponse.from_entity(rule)
 
 
@@ -154,12 +164,15 @@ async def update_rule(
 )
 async def delete_rule(
     rule_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     _: str = Depends(get_current_operator),
 ) -> None:
     """Delete a forwarding rule. All associated replacement_rules are also deleted."""
     use_case = DeleteRule(rule_repo)
     await use_case.execute(rule_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
 
 
 @router.post(
@@ -169,12 +182,15 @@ async def delete_rule(
 )
 async def enable_rule(
     rule_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     _: str = Depends(get_current_operator),
 ) -> dict:
     """Enable a forwarding rule. Returns 404 if rule does not exist."""
     use_case = EnableRule(rule_repo)
     await use_case.execute(rule_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return {"ok": True}
 
 
@@ -185,12 +201,15 @@ async def enable_rule(
 )
 async def disable_rule(
     rule_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     _: str = Depends(get_current_operator),
 ) -> dict:
     """Disable a forwarding rule. Returns 404 if rule does not exist."""
     use_case = DisableRule(rule_repo)
     await use_case.execute(rule_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return {"ok": True}
 
 
@@ -210,6 +229,8 @@ async def disable_rule(
 async def create_replacement_rule(
     rule_id: str,
     payload: ReplacementRuleCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     replacement_repo: ReplacementRuleRepository = Depends(get_replacement_repository),
     rule_repo: ForwardingRuleRepository = Depends(get_rule_repository),
     _: str = Depends(get_current_operator),
@@ -222,6 +243,7 @@ async def create_replacement_rule(
     """
     use_case = CreateReplacement(replacement_repo, rule_repo)
     replacement = await use_case.execute(rule_id, payload.model_dump())
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return ReplacementRuleResponse.from_entity(replacement)
 
 
@@ -259,6 +281,8 @@ async def update_replacement_rule(
     rule_id: str,
     replacement_id: str,
     payload: ReplacementRuleUpdateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     replacement_repo: ReplacementRuleRepository = Depends(get_replacement_repository),
     _: str = Depends(get_current_operator),
 ) -> ReplacementRuleResponse:
@@ -274,6 +298,7 @@ async def update_replacement_rule(
     """
     use_case = UpdateReplacement(replacement_repo)
     replacement = await use_case.execute(replacement_id, payload.model_dump())
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return ReplacementRuleResponse.from_entity(replacement)
 
 
@@ -285,6 +310,8 @@ async def update_replacement_rule(
 async def delete_replacement_rule(
     rule_id: str,
     replacement_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     replacement_repo: ReplacementRuleRepository = Depends(get_replacement_repository),
     _: str = Depends(get_current_operator),
 ) -> None:
@@ -296,3 +323,5 @@ async def delete_replacement_rule(
     """
     use_case = DeleteReplacement(replacement_repo)
     await use_case.execute(replacement_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
+

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rulesApi, type ForwardingRule, type RulesListResponse } from "@/api/rules";
 import { sourcesApi } from "@/api/sources";
+import { telegramApi } from "@/api/telegram";
 import { queryKeys } from "@/lib/queryKeys";
 import { StatusPill, FilterIconRow } from "@/components/shared";
 import {
@@ -64,6 +65,28 @@ export default function ForwardsList() {
     }
     return map;
   }, [sourcesData]);
+
+  // 3. Telegram Dialogs Query to resolve destination_channel -> channel name
+  const { data: tgDialogsData } = useQuery({
+    queryKey: queryKeys.telegram.dialogs(),
+    queryFn: () => telegramApi.fetchDialogs(),
+    staleTime: 60_000,
+  });
+
+  // Lookup map for Telegram dialog names
+  const dialogsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (tgDialogsData?.dialogs) {
+      tgDialogsData.dialogs.forEach(d => {
+        map.set(d.id, d.name);
+        if (d.username) {
+          map.set(`@${d.username}`, d.name);
+          map.set(d.username, d.name);
+        }
+      });
+    }
+    return map;
+  }, [tgDialogsData]);
 
   // Optimistic Toggle Mutation
   const toggleMutation = useMutation({
@@ -304,6 +327,8 @@ export default function ForwardsList() {
                   const sourceName = isSourcesLoading 
                     ? "Loading..." 
                     : sourcesMap.get(rule.source_id) || rule.source_id;
+
+                  const destName = dialogsMap.get(rule.destination_channel) || rule.destination_channel;
  
                   // Build config for filter icon row
                   const filterConfig = {
@@ -336,8 +361,8 @@ export default function ForwardsList() {
                         {sourceName}
                       </td>
                       {/* Destination */}
-                      <td className="py-3 px-4 text-muted-foreground max-w-[200px] truncate">
-                        {rule.destination_channel}
+                      <td className="py-3 px-4 text-muted-foreground max-w-[200px] truncate" title={rule.destination_channel}>
+                        {destName}
                       </td>
                       {/* Status */}
                       <td className="py-3 px-4 flex items-center gap-2">
