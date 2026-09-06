@@ -90,45 +90,45 @@ export function DegradedBanner() {
     <div 
       role="alert" 
       aria-live="assertive" 
-      className="w-full bg-degraded-bg border-b border-degraded-border text-degraded-foreground py-3 px-4 flex flex-col sm:flex-row items-center justify-between gap-3 select-none"
+      className="w-full bg-degraded-bg border-b border-degraded-border text-degraded-foreground py-2.5 px-4 md:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 select-none"
     >
-      <div className="flex items-center gap-2">
-        <AlertCircle className="w-5 h-5 flex-shrink-0 text-error animate-pulse" />
-        <span className="text-sm font-semibold tracking-tight leading-normal">{bannerText}</span>
+      <div className="flex items-center gap-2.5">
+        <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500 animate-pulse" />
+        <span className="text-xs font-medium tracking-tight leading-normal">{bannerText}</span>
       </div>
-
+ 
       <button
         disabled={reconnectState === "loading" || reconnectState === "success"}
         onClick={() => reconnectMutation.mutate()}
         className={cn(
-          "flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold border cursor-pointer select-none transition-all duration-300",
-          reconnectState === "idle" && "bg-error text-white border-transparent hover:bg-red-700 active:scale-[0.97]",
+          "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer select-none transition-all duration-200 shadow-sm",
+          reconnectState === "idle" && "bg-red-600 hover:bg-red-700 text-white border-transparent active:scale-[0.98]",
           reconnectState === "loading" && "bg-muted text-muted-foreground border-border cursor-wait opacity-75",
-          reconnectState === "success" && "bg-success text-white border-transparent",
-          reconnectState === "failure" && "bg-error text-white border-transparent animate-shake"
+          reconnectState === "success" && "bg-emerald-600 text-white border-transparent",
+          reconnectState === "failure" && "bg-red-600 text-white border-transparent animate-shake"
         )}
       >
         {reconnectState === "idle" && (
           <>
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-3 h-3" />
             <span>Reconnect</span>
           </>
         )}
         {reconnectState === "loading" && (
           <>
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <RefreshCw className="w-3 h-3 animate-spin" />
             <span>Reconnecting...</span>
           </>
         )}
         {reconnectState === "success" && (
           <>
-            <Check className="w-3.5 h-3.5 stroke-[3px]" />
+            <Check className="w-3 h-3 stroke-[3px]" />
             <span>Connected</span>
           </>
         )}
         {reconnectState === "failure" && (
           <>
-            <AlertCircle className="w-3.5 h-3.5" />
+            <AlertCircle className="w-3 h-3" />
             <span>Retry Failed</span>
           </>
         )}

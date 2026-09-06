@@ -36,21 +36,21 @@ export function CollapsiblePanel({
   };
 
   return (
-    <div className={cn("border border-border rounded-lg bg-card overflow-hidden transition-all duration-200 shadow-2xs", className)}>
+    <div className={cn("border border-border rounded-xl bg-card overflow-hidden transition-all duration-200 shadow-premium", className)}>
       <button
         type="button"
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={handleToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-muted/30 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="w-full flex items-center justify-between p-3.5 hover:bg-muted/40 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       >
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-          <span className="font-semibold text-foreground">{title}</span>
-          <span className="text-sm text-secondary font-medium">{summary}</span>
+        <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+          <span className="text-xs font-bold tracking-tight text-foreground">{title}</span>
+          <span className="text-[10px] text-muted-foreground font-medium">{summary}</span>
         </div>
         <ChevronDown 
           className={cn(
-            "w-5 h-5 text-muted-foreground transition-transform duration-300 ease-in-out flex-shrink-0",
+            "w-4 h-4 text-muted-foreground/60 transition-transform duration-300 ease-in-out flex-shrink-0",
             isOpen && "rotate-180"
           )}
         />
@@ -59,12 +59,12 @@ export function CollapsiblePanel({
         id={panelId}
         aria-hidden={!isOpen}
         className={cn(
-          "grid transition-all duration-300 ease-in-out border-border bg-muted/5",
+          "grid transition-all duration-300 ease-in-out border-border bg-card",
           isOpen ? "grid-rows-[1fr] opacity-100 border-t" : "grid-rows-[0fr] opacity-0"
         )}
       >
         <div className="overflow-hidden">
-          <div className="p-4 select-text">
+          <div className="p-4 select-text bg-muted/10">
             {children}
           </div>
         </div>

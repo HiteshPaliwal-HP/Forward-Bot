@@ -35,21 +35,21 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
   ];
 
   return (
-    <div className={cn("flex flex-col h-full bg-card text-foreground py-6 px-4 border-r border-border justify-between", className)}>
+    <div className={cn("flex flex-col h-full bg-card text-foreground py-6 px-4 border-r border-border justify-between select-none shadow-xs", className)}>
       <div className="flex flex-col gap-8">
         {/* Logo / Wordmark */}
-        <div className="flex items-center gap-2.5 px-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg select-none">
+        <div className="flex items-center gap-3 px-2">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg select-none ring-2 ring-primary/20 shadow-sm">
             F
           </div>
           <div>
-            <h1 className="text-md font-semibold tracking-tight leading-none">Forward Bot</h1>
-            <span className="text-[10px] text-muted-foreground">Operator Panel</span>
+            <h1 className="text-sm font-semibold tracking-tight leading-none text-foreground">Forward Bot</h1>
+            <span className="text-[9px] font-medium text-muted-foreground tracking-wider uppercase">Operator Panel</span>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex flex-col gap-1.5">
+        <nav className="flex flex-col gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -60,14 +60,14 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
                 end={item.path === "/"}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 select-none",
+                    "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 select-none",
                     isActive
-                      ? "bg-primary/10 text-primary font-semibold shadow-xs"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      ? "bg-muted text-foreground border-l-2 border-primary pl-2.5 font-semibold"
+                      : "text-muted-foreground hover:bg-muted-bg hover:text-foreground"
                   )
                 }
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
                 {item.label}
               </NavLink>
             );
@@ -76,16 +76,16 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
       </div>
 
       <div className="flex flex-col gap-4">
-        <hr className="border-border" />
+        <hr className="border-border opacity-60" />
         {/* Theme Select Row */}
         <div className="flex items-center justify-between px-2 text-muted-foreground text-xs">
-          <span className="font-medium">Theme</span>
-          <div className="flex bg-muted p-0.5 rounded-md border border-border">
+          <span className="font-medium text-xs">Theme</span>
+          <div className="flex bg-muted p-0.5 rounded-lg border border-border">
             <button
               onClick={() => setTheme("light")}
               className={cn(
-                "p-1.5 rounded-sm transition-colors cursor-pointer",
-                theme === "light" ? "bg-card text-primary shadow-xs" : "hover:text-foreground"
+                "p-1.5 rounded-md transition-all cursor-pointer",
+                theme === "light" ? "bg-card text-foreground shadow-sm" : "hover:text-foreground"
               )}
               title="Light theme"
             >
@@ -94,8 +94,8 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
             <button
               onClick={() => setTheme("dark")}
               className={cn(
-                "p-1.5 rounded-sm transition-colors cursor-pointer",
-                theme === "dark" ? "bg-card text-primary shadow-xs" : "hover:text-foreground"
+                "p-1.5 rounded-md transition-all cursor-pointer",
+                theme === "dark" ? "bg-card text-foreground shadow-sm" : "hover:text-foreground"
               )}
               title="Dark theme"
             >
@@ -104,8 +104,8 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
             <button
               onClick={() => setTheme("system")}
               className={cn(
-                "p-1.5 rounded-sm transition-colors cursor-pointer",
-                theme === "system" ? "bg-card text-primary shadow-xs" : "hover:text-foreground"
+                "p-1.5 rounded-md transition-all cursor-pointer",
+                theme === "system" ? "bg-card text-foreground shadow-sm" : "hover:text-foreground"
               )}
               title="System theme"
             >
@@ -117,7 +117,7 @@ export function Sidebar({ className, onItemClick }: SidebarProps) {
         {/* Logout Button */}
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-error hover:bg-error-bg transition-colors cursor-pointer w-full text-left"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all cursor-pointer w-full text-left"
         >
           <LogOut className="w-4 h-4" />
           <span>Logout</span>

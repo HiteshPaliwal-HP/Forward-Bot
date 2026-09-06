@@ -173,61 +173,60 @@ export default function SourcesList() {
   const totalPages = Math.ceil(totalItems / pageSize);
 
 
-
   return (
-    <div className="flex flex-col gap-6 relative pb-20 select-none">
+    <div className="flex flex-col gap-5 relative pb-16 select-none">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground animate-fade-in">Sources</h1>
-          <p className="text-sm text-muted-foreground font-medium">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground animate-fade-in">Sources</h1>
+          <p className="text-xs text-muted-foreground font-medium">
             Register and organize Telegram source channels and groups.
           </p>
         </div>
         <Link
           to="/sources/new"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-lg text-sm hover:bg-color-active-hover shadow active:scale-[0.98] transition-all cursor-pointer"
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground font-semibold rounded-lg text-xs hover:bg-color-active-hover shadow-sm active:scale-[0.98] transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>Register Source</span>
         </Link>
       </div>
-
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+ 
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
         {/* Left Rail (Folders) */}
-        <aside className="w-full lg:w-64 shrink-0 bg-card border border-border rounded-xl p-4 shadow-2xs space-y-4">
+        <aside className="w-full lg:w-64 shrink-0 bg-card border border-border rounded-xl p-4 shadow-premium space-y-3.5">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Folders</h2>
+            <h2 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Folders</h2>
             <button
               onClick={() => setFolderModal({ open: true, mode: "create" })}
-              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               title="New Folder"
             >
-              <FolderPlus className="w-4 h-4" />
+              <FolderPlus className="w-3.5 h-3.5" />
             </button>
           </div>
-
+ 
           <nav className="space-y-1">
             {/* All Folder Tab */}
             <button
               onClick={() => handleFolderChange(undefined)}
               className={cn(
-                "w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all text-left cursor-pointer",
+                "w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg transition-all text-left cursor-pointer",
                 selectedFolderId === undefined
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-muted text-foreground border-l-2 border-primary pl-2.5 font-bold shadow-2xs"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <span className="flex items-center gap-2">
                 {selectedFolderId === undefined ? (
-                  <FolderOpen className="w-4 h-4" />
+                  <FolderOpen className="w-3.5 h-3.5" />
                 ) : (
-                  <Folder className="w-4 h-4" />
+                  <Folder className="w-3.5 h-3.5" />
                 )}
                 <span>All Sources</span>
               </span>
             </button>
-
+ 
             {/* Folder list items */}
             {isFoldersLoading ? (
               <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
@@ -235,7 +234,7 @@ export default function SourcesList() {
                 <span>Loading folders...</span>
               </div>
             ) : isFoldersError ? (
-              <p className="py-2 text-center text-xs text-color-error font-medium">
+              <p className="py-2 text-center text-xs text-red-500 font-medium">
                 Failed to load folders.
               </p>
             ) : (
@@ -245,9 +244,9 @@ export default function SourcesList() {
                   <div
                     key={folder.id}
                     className={cn(
-                      "group w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all text-left",
+                      "group w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-left",
                       isSelected
-                        ? "bg-primary text-primary-foreground shadow-sm"
+                        ? "bg-muted text-foreground border-l-2 border-primary pl-2.5 font-bold shadow-2xs"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
@@ -256,19 +255,19 @@ export default function SourcesList() {
                       className="flex-1 flex items-center gap-2 overflow-hidden text-left cursor-pointer"
                     >
                       {isSelected ? (
-                        <FolderOpen className="w-4 h-4 shrink-0" />
+                        <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                       ) : (
-                        <Folder className="w-4 h-4 shrink-0" />
+                        <Folder className="w-3.5 h-3.5 shrink-0" />
                       )}
                       <span className="truncate pr-1">{folder.name}</span>
                     </button>
-
+ 
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
                       <span
                         className={cn(
-                          "text-xs px-1.5 py-0.5 rounded-full font-bold",
+                          "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
                           isSelected
-                            ? "bg-primary-foreground/20 text-primary-foreground"
+                            ? "bg-card text-foreground shadow-2xs border border-border"
                             : "bg-muted-bg text-muted-foreground group-hover:bg-color-border"
                         )}
                       >
@@ -279,8 +278,8 @@ export default function SourcesList() {
                           setFolderModal({ open: true, mode: "rename", folder })
                         }
                         className={cn(
-                          "p-0.5 rounded-md hover:bg-black/10 hover:text-foreground transition-colors cursor-pointer",
-                          isSelected ? "text-primary-foreground" : "opacity-0 group-hover:opacity-100"
+                          "p-0.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer",
+                          isSelected ? "text-foreground" : "opacity-0 group-hover:opacity-100"
                         )}
                         title="Rename folder"
                       >
@@ -291,8 +290,8 @@ export default function SourcesList() {
                           setFolderModal({ open: true, mode: "delete", folder })
                         }
                         className={cn(
-                          "p-0.5 rounded-md hover:bg-black/10 hover:text-color-error transition-colors cursor-pointer",
-                          isSelected ? "text-primary-foreground" : "opacity-0 group-hover:opacity-100"
+                          "p-0.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 hover:text-red-500 transition-colors cursor-pointer",
+                          isSelected ? "text-foreground" : "opacity-0 group-hover:opacity-100"
                         )}
                         title="Delete folder"
                       >
@@ -303,52 +302,52 @@ export default function SourcesList() {
                 );
               })
             )}
-
+ 
             {/* Ungrouped Folder Tab */}
             <button
               onClick={() => handleFolderChange(null)}
               className={cn(
                 "w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all text-left cursor-pointer",
                 selectedFolderId === null
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-muted text-foreground border-l-2 border-primary pl-2.5 font-bold shadow-2xs"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <span className="flex items-center gap-2">
                 {selectedFolderId === null ? (
-                  <FolderOpen className="w-4 h-4" />
+                  <FolderOpen className="w-3.5 h-3.5" />
                 ) : (
-                  <Folder className="w-4 h-4" />
+                  <Folder className="w-3.5 h-3.5" />
                 )}
                 <span>Ungrouped</span>
               </span>
             </button>
           </nav>
         </aside>
-
+ 
         {/* Sources Main Catalog */}
-        <main className="flex-1 w-full bg-card border border-border rounded-xl shadow-2xs overflow-hidden">
+        <main className="flex-1 w-full bg-card border border-border rounded-xl shadow-premium overflow-hidden">
           {isSourcesLoading ? (
             <div className="p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <span className="text-sm font-semibold">Loading sources...</span>
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <span className="text-xs font-semibold">Loading sources...</span>
             </div>
           ) : isSourcesError ? (
             <div className="p-12 flex flex-col items-center justify-center gap-3 bg-error-bg/20 text-center">
-              <AlertTriangle className="w-10 h-10 text-color-error" />
-              <span className="text-sm font-bold text-color-error">Failed to load sources catalog</span>
+              <AlertTriangle className="w-8 h-8 text-red-500" />
+              <span className="text-xs font-bold text-red-500">Failed to load sources catalog</span>
               <button
                 onClick={() => refetchSources()}
-                className="px-4 py-1.5 bg-primary text-white rounded-md text-xs font-bold hover:bg-color-active-hover active:scale-[0.98] transition-all cursor-pointer shadow-3xs"
+                className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-color-active-hover active:scale-[0.98] transition-all cursor-pointer shadow-sm"
               >
                 Retry
               </button>
             </div>
           ) : !sourcesData?.items || sourcesData.items.length === 0 ? (
             <div className="p-20 text-center border-dashed border border-border rounded-xl">
-              <FolderOpen className="w-12 h-12 text-muted-foreground/45 mx-auto mb-4" />
-              <p className="text-sm font-bold text-muted-foreground">No sources found in this view.</p>
-              <p className="text-xs text-muted-foreground mt-1.5 opacity-80">
+              <FolderOpen className="w-10 h-10 text-muted-foreground/45 mx-auto mb-4" />
+              <p className="text-xs font-bold text-muted-foreground">No sources found in this view.</p>
+              <p className="text-[11px] text-muted-foreground mt-1.5 opacity-80">
                 Register a new channel or select another folder.
               </p>
               <Link
@@ -364,38 +363,38 @@ export default function SourcesList() {
               <div className="overflow-x-auto w-full">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
-                    <tr className="border-b border-border bg-muted-bg text-xs font-bold text-muted-foreground uppercase tracking-wider select-none">
-                      <th className="py-3 px-4">Display Name</th>
-                      <th className="py-3 px-4">Telegram Handle / ID</th>
-                      <th className="py-3 px-4 w-28">Type</th>
-                      <th className="py-3 px-4">Folder</th>
-                      <th className="py-3 px-4 w-36 text-center">Active Rules</th>
-                      <th className="py-3 px-4 w-32 text-center">Actions</th>
+                    <tr className="border-b border-border bg-muted/30 text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
+                      <th className="py-2.5 px-4">Display Name</th>
+                      <th className="py-2.5 px-4">Telegram Handle / ID</th>
+                      <th className="py-2.5 px-4 w-28">Type</th>
+                      <th className="py-2.5 px-4">Folder</th>
+                      <th className="py-2.5 px-4 w-36 text-center">Active Rules</th>
+                      <th className="py-2.5 px-4 w-32 text-center">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border text-sm font-medium">
+                  <tbody className="divide-y divide-border text-xs font-medium">
                     {sourcesData.items.map((src) => {
                       const folderName = src.folder_id ? foldersMap.get(src.folder_id) || "–" : "–";
                       return (
-                        <tr key={src.id} className="hover:bg-muted-bg/50 transition-colors">
+                        <tr key={src.id} className="hover:bg-muted/40 transition-colors">
                           {/* Display Name */}
-                          <td className="py-3.5 px-4 text-foreground font-bold max-w-[200px] truncate">
+                          <td className="py-3 px-4 text-foreground font-bold max-w-[200px] truncate">
                             {src.display_name}
                           </td>
                           {/* Telegram Reference */}
-                          <td className="py-3.5 px-4 text-muted-foreground font-mono text-xs">
+                          <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">
                             {src.telegram_username ? `@${src.telegram_username}` : src.telegram_id}
                           </td>
                           {/* Type badge */}
-                          <td className="py-3.5 px-4">
-                            <span className="capitalize text-xs font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                          <td className="py-3 px-4">
+                            <span className="capitalize text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-muted text-muted-foreground">
                               {src.type}
                             </span>
                           </td>
                           {/* Folder badge */}
-                          <td className="py-3.5 px-4 text-muted-foreground">
+                          <td className="py-3 px-4 text-muted-foreground">
                             {src.folder_id ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
                                 {folderName}
                               </span>
                             ) : (
@@ -403,28 +402,28 @@ export default function SourcesList() {
                             )}
                           </td>
                           {/* Active Rules count */}
-                          <td className="py-3.5 px-4 text-center font-bold text-foreground">
+                          <td className="py-3 px-4 text-center font-bold text-foreground">
                             {getActiveRuleCount(src.id)}
                           </td>
                           {/* Actions */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-2">
                               <Link
                                 to={`/sources/${src.id}/edit`}
-                                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted-bg transition-colors"
+                                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                                 title="Edit Source"
                               >
-                                <Edit className="w-4 h-4" />
+                                <Edit className="w-3.5 h-3.5" />
                               </Link>
                               <button
                                 onClick={() => {
                                   setSourceToDelete(src);
                                   setShowDeleteConfirm(true);
                                 }}
-                                className="p-1.5 rounded-md text-muted-foreground hover:text-color-error hover:bg-error-bg/60 transition-colors cursor-pointer"
+                                className="p-1 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                                 title="Delete Source"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>
@@ -434,30 +433,30 @@ export default function SourcesList() {
                   </tbody>
                 </table>
               </div>
-
+ 
               {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t border-border/60 p-4">
-                  <span className="text-xs font-semibold text-muted-foreground">
+                  <span className="text-[11px] font-semibold text-muted-foreground">
                     Showing Page <span className="text-foreground">{page}</span> of{" "}
                     <span className="text-foreground">{totalPages}</span> ({totalItems} total sources)
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed transition-colors"
+                      className="p-1 border border-border rounded-lg hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed transition-colors"
                       title="Previous Page"
                     >
-                      <ChevronLeft className="w-4 h-4" />
+                      <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
-                      className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed transition-colors"
+                      className="p-1 border border-border rounded-lg hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed transition-colors"
                       title="Next Page"
                     >
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

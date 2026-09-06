@@ -66,27 +66,27 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   ];
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-card px-4 md:px-6 shadow-xs select-none">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card/80 backdrop-blur-md px-4 md:px-6 select-none transition-all duration-150">
       {/* Breadcrumbs / Mobile Menu Toggle */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuToggle}
-          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted md:hidden cursor-pointer"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted md:hidden cursor-pointer transition-colors duration-150"
           aria-label="Open navigation"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-4 h-4" />
         </button>
-
-        <nav className="hidden sm:flex items-center gap-1.5 text-sm font-medium">
+ 
+        <nav className="hidden sm:flex items-center gap-1 text-xs font-medium tracking-tight">
           {breadcrumbs.map((crumb, idx) => {
             const isLast = idx === breadcrumbs.length - 1;
             return (
-              <div key={crumb.path} className="flex items-center gap-1.5">
-                {idx > 0 && <ChevronRight className="w-4 h-4 text-muted-foreground/60" />}
+              <div key={crumb.path} className="flex items-center gap-1">
+                {idx > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
                 {isLast ? (
-                  <span className="text-foreground font-semibold">{crumb.label}</span>
+                  <span className="text-foreground font-semibold px-1 py-0.5">{crumb.label}</span>
                 ) : (
-                  <Link to={crumb.path} className="text-muted-foreground hover:text-foreground transition-colors">
+                  <Link to={crumb.path} className="text-muted-foreground hover:text-foreground hover:bg-muted/55 rounded px-1.5 py-0.5 transition-all">
                     {crumb.label}
                   </Link>
                 )}
@@ -95,22 +95,22 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           })}
         </nav>
       </div>
-
+ 
       {/* Health Status Dots & Warning Banners */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {/* Rules Cache Stale Warning */}
         {isCacheStale && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning-bg border border-warning-border text-warning-foreground animate-pulse shadow-2xs">
-            <AlertTriangle className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-warning-bg border border-warning-border text-warning-foreground shadow-sm">
+            <AlertTriangle className="w-3 h-3 animate-bounce" />
             <span>Rules cache stale (last refresh {timeAgo} ago)</span>
           </div>
         )}
-
+ 
         {/* Telegram status dot */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40">
-          <div className="relative flex h-2 w-2">
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg border border-border bg-muted-bg/50">
+          <div className="relative flex h-1.5 w-1.5">
             {telegramStatus === "connected" && (
-              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+              <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75 animate-ping"></span>
             )}
             {telegramStatus === "reconnecting" && (
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></span>
@@ -120,18 +120,18 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
             )}
             <span
               className={cn(
-                "relative inline-flex rounded-full h-2 w-2",
+                "relative inline-flex rounded-full h-1.5 w-1.5",
                 telegramStatus === "connected" && "bg-emerald-500",
                 telegramStatus === "reconnecting" && "bg-amber-500",
                 telegramStatus === "disconnected" && "bg-red-500"
               )}
             />
           </div>
-          <span className="text-xs font-semibold capitalize text-muted-foreground">
+          <span className="text-[10px] font-semibold tracking-wide uppercase text-muted-foreground">
             Telegram: <span className={cn(
-              telegramStatus === "connected" && "text-emerald-600 dark:text-emerald-400",
-              telegramStatus === "reconnecting" && "text-amber-600 dark:text-amber-400",
-              telegramStatus === "disconnected" && "text-red-600 dark:text-red-400",
+              telegramStatus === "connected" && "text-emerald-600 dark:text-emerald-400 font-bold",
+              telegramStatus === "reconnecting" && "text-amber-600 dark:text-amber-400 font-bold",
+              telegramStatus === "disconnected" && "text-red-600 dark:text-red-400 font-bold",
             )}>{telegramStatus}</span>
           </span>
         </div>

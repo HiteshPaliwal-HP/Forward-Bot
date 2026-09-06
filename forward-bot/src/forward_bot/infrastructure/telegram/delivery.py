@@ -1,10 +1,12 @@
 """Telegram delivery implementation with reliability and retries."""
 import asyncio
+from io import BytesIO
 from pathlib import Path
 from typing import Tuple, Any, List
 
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError, RPCError, MessageNotModifiedError
+from telethon.errors import FloodWaitError, RPCError, MessageNotModifiedError, ChatForwardsRestrictedError
+from telethon.tl.types import MessageMediaPhoto
 
 from forward_bot.config import Settings
 from forward_bot.domain.entities.pipeline_context import PipelineContext
@@ -84,7 +86,52 @@ async def deliver_message(
             # FloodWait retry does NOT count against the transient error retry budget.
             continue
 
-        except (ConnectionError, asyncio.TimeoutError, RPCError) as e:
+        except (ChatForwardsRestrictedError, RPCError) as e:
+            # Handle Telegram "Protect Content" restriction: download media locally then re-upload.
+            is_protected_chat_error = isinstance(e, ChatForwardsRestrictedError) or (
+                isinstance(e, RPCError) and "protected chat" in str(e).lower()
+            )
+            if is_protected_chat_error and ctx.media is not None and not isinstance(ctx.media, (Path, bytes, BytesIO)):
+                logger.warning(
+                    "protected_chat_download_fallback",
+                    rule_id=str(ctx.rule.id),
+                    correlation_id=ctx.correlation_id,
+                    message="Source chat has Protect Content enabled. Downloading media and re-uploading."
+                )
+                try:
+                    buf = BytesIO()
+                    await client.download_media(ctx.media, file=buf)
+                    buf.seek(0)
+                    # Preserve original media type: photos must have an image extension
+                    # so Telethon uploads them as photos rather than documents.
+                    if isinstance(ctx.media, MessageMediaPhoto):
+                        buf.name = "image.jpg"
+                    else:
+                        # Try to derive filename from document attributes if present
+                        doc = getattr(ctx.media, "document", None)
+                        if doc:
+                            from telethon.tl.types import DocumentAttributeFilename
+                            for attr in getattr(doc, "attributes", []):
+                                if isinstance(attr, DocumentAttributeFilename):
+                                    buf.name = attr.file_name
+                                    break
+                            else:
+                                buf.name = "file"
+                        else:
+                            buf.name = "file"
+                    # Replace ctx.media with the named buffer so subsequent attempts use re-upload
+                    ctx.media = buf
+                    continue  # Retry immediately with downloaded bytes — does not count as an error attempt
+                except Exception as dl_err:
+                    logger.error(
+                        "protected_chat_download_failed",
+                        rule_id=str(ctx.rule.id),
+                        correlation_id=ctx.correlation_id,
+                        error=str(dl_err),
+                        message="Failed to download media from protected chat. Skipping message."
+                    )
+                    raise e
+
             if isinstance(e, RPCError) and "REPLY_MESSAGE_ID_INVALID" in str(e) and ctx.reply_target_destination_id is not None:
                 logger.warning(
                     "reply_target_missing",
@@ -95,6 +142,30 @@ async def deliver_message(
                 ctx.reply_target_destination_id = None
                 continue
 
+            attempt += 1
+            if attempt > settings.delivery_max_retries:
+                logger.error(
+                    "forward_failed",
+                    rule_id=str(ctx.rule.id),
+                    correlation_id=ctx.correlation_id,
+                    error=str(e),
+                    message=f"Forwarding failed after {attempt - 1} retries due to transient error."
+                )
+                raise e
+
+            delay = settings.delivery_base_delay * (settings.delivery_backoff_factor ** (attempt - 1))
+            logger.warning(
+                "delivery_transient_error",
+                attempt=attempt,
+                rule_id=str(ctx.rule.id),
+                correlation_id=ctx.correlation_id,
+                error=str(e),
+                backoff_delay=delay,
+                message=f"Transient Telegram error encountered. Retrying in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+
+        except (ConnectionError, asyncio.TimeoutError) as e:
             attempt += 1
             if attempt > settings.delivery_max_retries:
                 logger.error(

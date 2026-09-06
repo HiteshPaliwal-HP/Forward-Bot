@@ -153,6 +153,8 @@ def create_app(settings: Settings | None = None, lifespan=None) -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1/auth")
     from forward_bot.api.routers.media import router as media_router
     app.include_router(media_router)
+    from forward_bot.api.routers.telegram import router as telegram_router
+    app.include_router(telegram_router)
 
     # Register Exception Handlers for standard error response envelopes
     from fastapi.responses import JSONResponse

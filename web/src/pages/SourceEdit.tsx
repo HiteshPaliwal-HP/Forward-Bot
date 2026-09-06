@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { sourcesApi, type SourceItem } from "@/api/sources";
 import { foldersApi, type FolderItem } from "@/api/folders";
+import { telegramApi } from "@/api/telegram";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { Button } from "@/components/shared/Button";
@@ -29,9 +30,31 @@ export default function SourceEdit() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
   const [resolvedId, setResolvedId] = useState<number | null>(null);
+  
+  // Selection vs manual input mode for Telegram Reference
+  const [inputMode, setInputMode] = useState<"select" | "manual">("manual");
 
   // Field validation states (inline errors)
   const [errors, setErrors] = useState<ValidationErrors>({});
+
+  // Fetch dialogs from Telegram client
+  const { data: tgDialogsData, isLoading: isTgDialogsLoading } = useQuery({
+    queryKey: queryKeys.telegram.dialogs(),
+    queryFn: () => telegramApi.fetchDialogs(),
+    enabled: isNewSource,
+    staleTime: 30_000,
+  });
+
+  // Automatically update inputMode to 'select' if Telegram client is connected
+  useEffect(() => {
+    if (tgDialogsData) {
+      if (tgDialogsData.connected) {
+        setInputMode("select");
+      } else {
+        setInputMode("manual");
+      }
+    }
+  }, [tgDialogsData]);
 
   // Fetch folders for dropdown selection
   const { data: foldersData, isLoading: isFoldersLoading } = useQuery<FolderItem[]>({
@@ -188,73 +211,151 @@ export default function SourceEdit() {
         </Link>
       </div>
     );
-  }
-
-  return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto pb-20 select-none">
+  }  return (
+    <div className="flex flex-col gap-5 max-w-2xl mx-auto pb-16 select-none animate-fade-in">
       {/* Back link & Title */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
         <Link
           to="/sources"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-bold transition-colors w-fit"
+          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground font-semibold transition-colors w-fit"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-3 h-3" />
           <span>Back to Sources</span>
         </Link>
-        <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">
           {isNewSource ? "Register Source" : "Edit Source"}
         </h1>
       </div>
-
+ 
       {isLoadingData ? (
-        <div className="bg-card border border-border rounded-xl p-8 shadow-2xs flex flex-col items-center justify-center gap-4 text-muted-foreground min-h-[300px]">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <span className="text-sm font-semibold">Loading source configurations...</span>
+        <div className="bg-card border border-border rounded-xl p-8 shadow-premium flex flex-col items-center justify-center gap-4 text-muted-foreground min-h-[250px]">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="text-xs font-semibold">Loading source configurations...</span>
         </div>
       ) : (
         <form
           onSubmit={handleSubmit}
-          className="bg-card border border-border rounded-xl p-6 shadow-2xs space-y-6"
+          className="bg-card border border-border rounded-xl p-5 shadow-premium space-y-5"
         >
           {/* Telegram Reference (New Mode Only) */}
           {isNewSource ? (
-            <div className="space-y-2">
-              <label htmlFor="telegram_reference" className="text-sm font-bold text-foreground">
-                Telegram Handle or Channel ID
-              </label>
-              <input
-                type="text"
-                id="telegram_reference"
-                value={telegramReference}
-                onChange={(e) => setTelegramReference(e.target.value)}
-                placeholder="e.g. @telegram_channel or -10012345678"
-                disabled={isSaving}
-                className={cn(
-                  "w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all",
-                  errors.telegram_reference && "border-color-error focus:ring-color-error"
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wide">
+                  Telegram Source Reference
+                </label>
+                {tgDialogsData?.connected && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("select")}
+                      className={cn(
+                        "px-2.5 py-1 text-[10px] font-semibold rounded-lg border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        inputMode === "select"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Select from Account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("manual")}
+                      className={cn(
+                        "px-2.5 py-1 text-[10px] font-semibold rounded-lg border transition-all cursor-pointer select-none active:scale-[0.98]",
+                        inputMode === "manual"
+                          ? "bg-primary border-primary text-primary-foreground font-bold"
+                          : "bg-card border-border hover:bg-muted text-muted-foreground"
+                      )}
+                    >
+                      Enter Manually
+                    </button>
+                  </div>
                 )}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Provide either the Telegram username starting with '@', or the unique numeric Telegram ID (typically starts with '-100').
-              </p>
+              </div>
+
+              {inputMode === "select" && tgDialogsData?.connected ? (
+                <div className="space-y-1.5 animate-fade-in">
+                  {isTgDialogsLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>Loading dialogs...</span>
+                    </div>
+                  ) : (
+                    <select
+                      id="telegram_select"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          const dialog = tgDialogsData.dialogs.find((d) => d.id === val);
+                          if (dialog) {
+                            setTelegramReference(dialog.username ? `@${dialog.username}` : dialog.id);
+                            setDisplayName(dialog.name);
+                          }
+                        } else {
+                          setTelegramReference("");
+                        }
+                      }}
+                      disabled={isSaving}
+                      className="w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
+                    >
+                      <option value="">Select a channel or group...</option>
+                      {tgDialogsData.dialogs.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} {d.username ? `(@${d.username})` : `(ID: ${d.id})`} — {d.is_channel ? "Channel" : "Group"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Select a channel or group linked to your logged-in Telegram account.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 animate-fade-in">
+                  <input
+                    type="text"
+                    id="telegram_reference"
+                    value={telegramReference}
+                    onChange={(e) => setTelegramReference(e.target.value)}
+                    placeholder="e.g. @telegram_channel or -10012345678"
+                    disabled={isSaving}
+                    className={cn(
+                      "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
+                      errors.telegram_reference && "border-red-500 focus:ring-red-500/20"
+                    )}
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Provide either the Telegram username starting with '@', or the unique numeric Telegram ID (typically starts with '-100').
+                  </p>
+                </div>
+              )}
+
+              {/* Offline/degraded indicator */}
+              {tgDialogsData && !tgDialogsData.connected && (
+                <div className="p-2.5 rounded-lg border border-warning-border bg-warning-bg/10 text-warning-foreground text-[10px] font-medium leading-normal">
+                  ⚠️ Live Telegram connection is not active. Dialogue listing auto-selection is unavailable. Please enter reference handle or ID manually.
+                </div>
+              )}
+
               {errors.telegram_reference && (
-                <p className="text-xs text-color-error font-medium">{errors.telegram_reference}</p>
+                <p className="text-xs text-red-500 font-semibold mt-1">{errors.telegram_reference}</p>
               )}
             </div>
           ) : (
             // Read-Only Reference in Edit Mode
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-foreground">Telegram Reference</label>
-              <div className="px-3.5 py-2 border border-border bg-muted-bg/60 rounded-md text-sm font-mono text-muted-foreground select-all">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground uppercase tracking-wide">Telegram Reference</label>
+              <div className="h-9 px-3 flex items-center border border-border bg-muted/30 rounded-lg text-xs font-mono text-muted-foreground select-all">
                 {telegramUsername ? `@${telegramUsername}` : resolvedId || "—"}
               </div>
             </div>
           )}
-
+ 
           {/* Display Name */}
-          <div className="space-y-2">
-            <label htmlFor="display_name" className="text-sm font-bold text-foreground">
+          <div className="space-y-1.5">
+            <label htmlFor="display_name" className="text-xs font-bold text-foreground uppercase tracking-wide">
               Display Name
             </label>
             <input
@@ -265,28 +366,28 @@ export default function SourceEdit() {
               placeholder="e.g. Tech News Feed"
               disabled={isSaving}
               className={cn(
-                "w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all",
-                errors.display_name && "border-color-error focus:ring-color-error"
+                "w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
+                errors.display_name && "border-red-500 focus:ring-red-500/20"
               )}
             />
             {errors.display_name && (
-              <p className="text-xs text-color-error font-medium">{errors.display_name}</p>
+              <p className="text-xs text-red-500 font-semibold">{errors.display_name}</p>
             )}
-
+ 
             {/* Resolved Telegram ID echo */}
             {resolvedId !== null && (
-              <p className="text-xs text-muted-foreground font-semibold mt-1">
+              <p className="text-[11px] text-muted-foreground font-semibold mt-1">
                 Resolved ID: <span className="font-mono text-foreground">{resolvedId}</span>
               </p>
             )}
           </div>
-
+ 
           {/* Type radio button (Edit Mode Only) */}
           {!isNewSource && (
-            <div className="space-y-2.5">
-              <span className="text-sm font-bold text-foreground block">Source Type</span>
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-foreground block uppercase tracking-wide">Source Type</span>
               <div className="flex items-center gap-6">
-                <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-semibold text-foreground">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
                   <input
                     type="radio"
                     name="type"
@@ -294,11 +395,11 @@ export default function SourceEdit() {
                     checked={type === "channel"}
                     onChange={() => setType("channel")}
                     disabled={isSaving}
-                    className="w-4 h-4 border-border text-primary focus:ring-primary"
+                    className="w-4 h-4 border-border text-primary focus:ring-primary/20"
                   />
                   <span>Channel</span>
                 </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer text-sm font-semibold text-foreground">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
                   <input
                     type="radio"
                     name="type"
@@ -306,18 +407,18 @@ export default function SourceEdit() {
                     checked={type === "group"}
                     onChange={() => setType("group")}
                     disabled={isSaving}
-                    className="w-4 h-4 border-border text-primary focus:ring-primary"
+                    className="w-4 h-4 border-border text-primary focus:ring-primary/20"
                   />
                   <span>Group</span>
                 </label>
               </div>
-              {errors.type && <p className="text-xs text-color-error font-medium">{errors.type}</p>}
+              {errors.type && <p className="text-xs text-red-500 font-semibold">{errors.type}</p>}
             </div>
           )}
-
+ 
           {/* Folder dropdown */}
-          <div className="space-y-2">
-            <label htmlFor="folder_id" className="text-sm font-bold text-foreground">
+          <div className="space-y-1.5">
+            <label htmlFor="folder_id" className="text-xs font-bold text-foreground uppercase tracking-wide">
               Folder Assignment
             </label>
             {isFoldersLoading ? (
@@ -331,7 +432,7 @@ export default function SourceEdit() {
                 value={folderId || ""}
                 onChange={(e) => setFolderId(e.target.value === "" ? null : e.target.value)}
                 disabled={isSaving}
-                className="w-full px-3.5 py-2 border border-border bg-card rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all cursor-pointer"
+                className="w-full h-9 px-3 border border-border bg-card rounded-lg text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer font-medium"
               >
                 <option value="">None (Ungrouped)</option>
                 {foldersData?.map((f) => (
@@ -342,29 +443,30 @@ export default function SourceEdit() {
               </select>
             )}
             {errors.folder_id && (
-              <p className="text-xs text-color-error font-medium">{errors.folder_id}</p>
+              <p className="text-xs text-red-500 font-semibold">{errors.folder_id}</p>
             )}
           </div>
-
+ 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/60">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
             <Button
               type="button"
               variant="outline"
               onClick={() => navigate("/sources")}
               disabled={isSaving}
+              size="sm"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving}>
+            <Button type="submit" disabled={isSaving} size="sm">
               {isSaving ? (
                 <span className="flex items-center gap-1.5 animate-fade-in">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   Saving...
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                   <span>{isNewSource ? "Register Source" : "Save Changes"}</span>
                 </span>
               )}

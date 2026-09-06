@@ -9,7 +9,8 @@ import {
   Filter, 
   X, 
   AlertCircle,
-  Activity
+  Activity,
+  Loader2
 } from "lucide-react";
 
 import { logsApi } from "@/api/logs";
@@ -183,42 +184,42 @@ export default function Logs() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-4 select-none">
+    <div className="flex flex-col h-[calc(100vh-8.5rem)] gap-4 select-none animate-fade-in">
       {/* Header section */}
       <div className="flex items-center justify-between flex-wrap gap-4 px-1">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground">System Logs</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">System Logs</h1>
             {!isLoading && (
-              <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border transition-all ${
+              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all ${
                 isConnected 
                   ? "bg-success-bg border-success-border text-success-foreground" 
                   : "bg-error-bg border-error-border text-error"
               }`}>
-                <Activity className={`w-3.5 h-3.5 ${isConnected ? "animate-pulse" : ""}`} />
+                <Activity className={`w-3 h-3 ${isConnected ? "animate-pulse" : ""}`} />
                 <span>{isConnected ? "Live Feed" : "Disconnected"}</span>
               </div>
             )}
           </div>
-          <p className="text-sm text-muted-foreground font-medium">
+          <p className="text-xs text-muted-foreground font-medium">
             Real-time feed of message events, processing filters, and forwarding status.
           </p>
         </div>
       </div>
-
+ 
       {/* Filter and controls bar */}
-      <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 shadow-2xs">
+      <div className="bg-card border border-border rounded-xl p-3.5 flex flex-col gap-3 shadow-premium">
         <div className="flex flex-wrap items-center justify-between gap-4">
           {/* Severity Chips */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mr-2">Severity</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-1.5">Severity</span>
             {SEVERITIES.map((severity) => {
               const isActive = activeSeverities.includes(severity);
               return (
                 <button
                   key={severity}
                   onClick={() => handleToggleSeverity(severity)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-full capitalize border transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 text-[10px] font-semibold rounded-lg capitalize border transition-all cursor-pointer select-none active:scale-[0.98] ${
                     isActive
                       ? severity === "info"
                         ? "bg-muted border-muted text-foreground"
@@ -227,7 +228,7 @@ export default function Logs() {
                         : severity === "error"
                         ? "bg-error-bg border-error-border text-error"
                         : "bg-success-bg border-success-border text-success-foreground"
-                      : "bg-card border-border hover:bg-muted-bg text-muted-foreground"
+                      : "bg-card border-border hover:bg-muted text-muted-foreground"
                   }`}
                 >
                   {severity}
@@ -235,60 +236,60 @@ export default function Logs() {
               );
             })}
           </div>
-
+ 
           {/* Correlation ID search */}
           <div className="flex items-center gap-2 w-full sm:w-auto min-w-[280px]">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Trace ID</span>
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider shrink-0">Trace ID</span>
             <div className="relative w-full">
               <input
                 type="text"
                 placeholder="correlation-id"
                 value={activeCorrelationId}
                 onChange={(e) => handleCorrelationIdChange(e.target.value)}
-                className="w-full bg-muted-bg border border-border hover:border-muted-foreground/30 focus:border-primary focus:ring-1 focus:ring-ring rounded-lg px-3 py-1.5 text-xs font-mono text-foreground focus:outline-none transition-all placeholder:text-muted-foreground"
+                className="w-full h-8 bg-muted-bg border border-border hover:border-muted-foreground/30 focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-lg px-2.5 py-1 text-xs font-mono text-foreground focus:outline-none transition-all placeholder:text-muted-foreground"
               />
               {activeCorrelationId && (
                 <button
                   onClick={() => handleCorrelationIdChange("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3" />
                 </button>
               )}
             </div>
           </div>
         </div>
-
+ 
         {/* Clear Filters / Trace Helpers */}
         {(activeSeverities.length > 0 || activeCorrelationId) && (
           <div className="flex flex-wrap items-center justify-between border-t border-border pt-3 mt-1 flex-row">
             <div className="flex items-center gap-2">
               <button
                 onClick={handleClearFilters}
-                className="inline-flex items-center gap-1 text-xs text-error font-bold hover:underline cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] text-red-500 font-semibold hover:underline cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3 h-3" />
                 <span>Clear active filters</span>
               </button>
               {activeCorrelationId && activeRuleId && (
                 <>
-                  <span className="text-muted-foreground text-xs mx-1">|</span>
+                  <span className="text-muted-foreground text-[11px] mx-1">|</span>
                   <Link
                     to={`/forwards/${activeRuleId}/edit`}
-                    className="inline-flex items-center gap-1 text-xs text-primary font-bold hover:underline cursor-pointer"
+                    className="inline-flex items-center gap-1 text-[11px] text-primary font-semibold hover:underline cursor-pointer"
                   >
                     <span>Jump to forwarding rule →</span>
                   </Link>
                 </>
               )}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground font-semibold">
               Showing {filteredEntries.length} of {allEntries.length} buffered log events
             </span>
           </div>
         )}
       </div>
-
+ 
       {/* SSE Connection error banner */}
       {isSseError && (
         <DegradedBanner
@@ -297,33 +298,33 @@ export default function Logs() {
           isLoading={isReconnectLoading}
         />
       )}
-
+ 
       {/* Main logs display listing */}
-      <div className="flex-1 min-h-0 bg-card border border-border rounded-xl relative shadow-2xs overflow-hidden">
+      <div className="flex-1 min-h-0 bg-card border border-border rounded-xl relative shadow-premium overflow-hidden">
         {isLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-border border-t-primary animate-spin" />
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
             <span className="text-xs text-muted-foreground font-semibold">Loading system logs...</span>
           </div>
         ) : isHistoricalError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center gap-3">
-            <AlertCircle className="w-10 h-10 text-error animate-bounce" />
-            <h3 className="text-sm font-bold text-foreground">Failed to Load Logs</h3>
-            <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
+            <AlertCircle className="w-8 h-8 text-red-500 animate-bounce" />
+            <h3 className="text-xs font-bold text-foreground">Failed to Load Logs</h3>
+            <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
               Could not retrieve the recent log events from the server. Check backend connectivity.
             </p>
             <button
               onClick={() => refetchHistorical()}
-              className="px-3.5 py-1.5 bg-primary text-white hover:opacity-90 font-bold rounded-lg text-xs shadow-3xs cursor-pointer"
+              className="px-3 py-1.5 bg-primary text-white hover:opacity-90 font-semibold rounded-lg text-xs shadow-sm cursor-pointer active:scale-[0.98] transition-all"
             >
               Retry Load
             </button>
           </div>
         ) : filteredEntries.length === 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-            <Filter className="w-10 h-10 text-muted mb-2.5 opacity-60" />
-            <h3 className="text-sm font-bold text-foreground">No Logs Found</h3>
-            <p className="text-xs text-muted-foreground max-w-xs leading-relaxed mt-1">
+            <Filter className="w-8 h-8 text-muted mb-2 opacity-60" />
+            <h3 className="text-xs font-bold text-foreground">No Logs Found</h3>
+            <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed mt-1">
               {activeSeverities.length > 0 || activeCorrelationId
                 ? "No log entries match the current filters. Adjust severities or correlation ID."
                 : "No activities registered. Events will appear here as message operations run."}
@@ -331,7 +332,7 @@ export default function Logs() {
             {(activeSeverities.length > 0 || activeCorrelationId) && (
               <button
                 onClick={handleClearFilters}
-                className="mt-3.5 text-xs text-primary font-bold hover:underline cursor-pointer"
+                className="mt-3 text-xs text-primary font-bold hover:underline cursor-pointer"
               >
                 Clear all filters
               </button>
@@ -342,7 +343,7 @@ export default function Logs() {
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="w-full h-full overflow-y-auto p-4 flex flex-col gap-3"
+              className="w-full h-full overflow-y-auto p-4 flex flex-col gap-2.5"
             >
               {filteredEntries.map((entry, index) => (
                 <LogRow
@@ -352,7 +353,7 @@ export default function Logs() {
                 />
               ))}
             </div>
-
+ 
             {/* Floating Auto-scroll indicator / Jump to bottom */}
             {!isAutoScroll && (
               <button
@@ -360,7 +361,7 @@ export default function Logs() {
                   setIsAutoScroll(true);
                   scrollToBottom();
                 }}
-                className="absolute bottom-4 right-4 flex items-center gap-1.5 px-3 py-2 bg-primary hover:opacity-95 text-primary-foreground text-xs font-bold rounded-full shadow-lg transition-all animate-bounce cursor-pointer select-none border border-transparent"
+                className="absolute bottom-4 right-4 flex items-center gap-1 px-2.5 py-1.5 bg-primary hover:bg-color-active-hover text-primary-foreground text-xs font-semibold rounded-lg shadow-premium transition-all animate-bounce cursor-pointer select-none"
               >
                 <ArrowDown className="w-3.5 h-3.5" />
                 <span>Jump to latest</span>
@@ -369,26 +370,23 @@ export default function Logs() {
           </>
         )}
       </div>
-
+ 
       {/* Footer Controls */}
       {!isLoading && !isHistoricalError && (
         <div className="flex items-center justify-between px-1 flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsAutoScroll(!isAutoScroll)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card hover:bg-muted border border-border text-muted-foreground hover:text-foreground text-xs font-bold rounded-lg transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-card hover:bg-muted border border-border text-muted-foreground hover:text-foreground text-xs font-semibold rounded-lg transition-all cursor-pointer active:scale-[0.98]"
             >
               {isAutoScroll ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               <span>{isAutoScroll ? "Pause Scroll" : "Auto Scroll"}</span>
             </button>
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
               {isAutoScroll ? "Tail Mode Enabled" : "Tail Mode Paused"}
             </span>
           </div>
-
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-            <span>Buffer limit: 1000 items</span>
-          </div>
+ 
         </div>
       )}
     </div>

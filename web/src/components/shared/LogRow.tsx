@@ -174,9 +174,9 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
   return (
     <div 
       className={cn(
-        "border border-border border-l-4 rounded-md overflow-hidden bg-card hover:bg-muted/15 transition-all duration-200 shadow-2xs select-none",
+        "border border-border border-l-2 rounded-lg overflow-hidden bg-card hover:bg-muted/15 transition-all duration-200 shadow-premium select-none shrink-0",
         config.stripeClass,
-        isOpen && "shadow-xs"
+        isOpen && "shadow-sm border-l-2"
       )}
     >
       <div 
@@ -189,15 +189,15 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
             handleRowClick(e);
           }
         }}
-        className="flex items-center justify-between p-3.5 gap-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex items-center justify-between p-2.5 px-3.5 gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-inset"
       >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Icon className={cn("w-5 h-5 flex-shrink-0", config.iconClass)} />
-          <span className={cn("text-sm font-bold text-foreground truncate max-w-[180px] sm:max-w-[240px]", config.labelClass)}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <Icon className={cn("w-4 h-4 flex-shrink-0", config.iconClass)} />
+          <span className={cn("text-xs font-bold text-foreground truncate max-w-[180px] sm:max-w-[240px]", config.labelClass)}>
             {formatEventLabel(entry.event)}
           </span>
           {payloadPreview && (
-            <span className="text-xs font-mono text-muted-foreground truncate max-w-sm sm:max-w-md md:max-w-lg hidden sm:inline select-text">
+            <span className="text-[10px] font-mono text-muted-foreground/80 truncate max-w-sm sm:max-w-md md:max-w-lg hidden sm:inline select-text">
               {payloadPreview}
             </span>
           )}
@@ -205,7 +205,7 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
 
         <div className="flex-shrink-0 flex items-center">
           <Tooltip content={new Date(entry.timestamp).toLocaleString()}>
-            <span className="text-xs text-muted-foreground font-medium tabular-nums">
+            <span className="text-[11px] text-muted-foreground/70 font-semibold tabular-nums">
               {formatTimestamp(entry.timestamp)}
             </span>
           </Tooltip>
@@ -214,17 +214,17 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
 
       <div 
         className={cn(
-          "grid transition-all duration-300 ease-in-out border-border bg-muted/10",
+          "grid transition-all duration-300 ease-in-out border-border bg-muted/5",
           isOpen ? "grid-rows-[1fr] border-t" : "grid-rows-[0fr]"
         )}
       >
         <div className="overflow-hidden">
-          <div className="p-4 flex flex-col gap-3.5 select-text">
+          <div className="p-3.5 flex flex-col gap-3 select-text">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Level:</span>
+                <span className="text-[11px] text-muted-foreground">Level:</span>
                 <span className={cn(
-                  "text-xs px-2 py-0.5 rounded-full font-semibold border capitalize",
+                  "text-[9px] px-1.5 py-0.5 rounded-lg font-bold border capitalize",
                   entry.level === "debug" && "bg-muted-bg border-border text-muted-foreground",
                   entry.level === "info" && "bg-success-bg border-success-border text-success-foreground",
                   (entry.level === "warning" || entry.level === "error" || entry.level === "critical") && "bg-error-bg border-error-border text-error"
@@ -233,13 +233,13 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
                 </span>
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {entry.correlation_id && (
                   <button
                     onClick={handleCopyCorrelation}
-                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-card hover:bg-muted border border-border rounded-md text-muted-foreground hover:text-foreground transition-all cursor-pointer shadow-3xs"
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-card hover:bg-muted border border-border rounded-lg text-foreground font-semibold transition-all cursor-pointer shadow-3xs"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
                     <span>{copied ? "Copied" : "Copy Correlation ID"}</span>
                   </button>
                 )}
@@ -249,9 +249,9 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
                       e.stopPropagation();
                       onFilterByCorrelationId(entry.correlation_id!);
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-card hover:bg-muted border border-border rounded-md text-muted-foreground hover:text-foreground transition-all cursor-pointer shadow-3xs"
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-card hover:bg-muted border border-border rounded-lg text-foreground font-semibold transition-all cursor-pointer shadow-3xs"
                   >
-                    <Filter className="w-3.5 h-3.5 text-primary" />
+                    <Filter className="w-3 h-3 text-primary" />
                     <span>Filter by this ID</span>
                   </button>
                 )}
@@ -259,7 +259,7 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
                   <Link
                     to={`/forwards?id=${entry.rule_id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-primary hover:underline flex items-center gap-1 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="text-[11px] text-primary hover:underline flex items-center gap-1 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
                   >
                     <span>Jump to rule →</span>
                   </Link>
@@ -267,9 +267,9 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-muted-foreground">Payload Details:</span>
-              <pre className="font-mono text-xs text-foreground p-3 bg-card border border-border rounded-md overflow-x-auto max-w-full shadow-3xs font-mono">
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold text-muted-foreground">Payload Details:</span>
+              <pre className="font-mono text-[10px] text-foreground p-3 bg-card border border-border rounded-lg overflow-x-auto max-w-full shadow-premium font-mono">
                 {JSON.stringify(entry, null, 2)}
               </pre>
             </div>

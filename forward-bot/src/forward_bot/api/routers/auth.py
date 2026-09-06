@@ -33,7 +33,7 @@ async def login(
         session_val = signer.sign(b"operator").decode("utf-8")
         
         # Set HttpOnly session cookie
-        secure_cookie = settings.bind_host != "127.0.0.1"
+        secure_cookie = False  # HTTP deployment - no HTTPS
         response.set_cookie(
             key="session",
             value=session_val,
@@ -61,7 +61,7 @@ async def logout(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, bool]:
     """Log out by clearing the session cookie."""
-    secure_cookie = settings.bind_host != "127.0.0.1"
+    secure_cookie = False  # HTTP deployment - no HTTPS
     response.delete_cookie(
         key="session",
         httponly=True,
