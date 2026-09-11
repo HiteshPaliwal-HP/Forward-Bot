@@ -5,14 +5,27 @@ import { Tooltip } from "./Tooltip";
 
 const getDaysText = (days: string[]) => {
   const order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-  const sorted = [...days].sort((a, b) => order.indexOf(a.toLowerCase()) - order.indexOf(b.toLowerCase()));
+  const sorted = [...days].sort((a, b) => {
+    const idxA = order.indexOf(a.toLowerCase());
+    const idxB = order.indexOf(b.toLowerCase());
+    const valA = idxA === -1 ? 999 : idxA;
+    const valB = idxB === -1 ? 999 : idxB;
+    return valA - valB;
+  });
   if (sorted.length === 5 && sorted[0].toLowerCase() === "mon" && sorted[4].toLowerCase() === "fri") {
     return "Mon–Fri";
   }
   if (sorted.length === 7) {
     return "Daily";
   }
-  return sorted.map(d => d.charAt(0).toUpperCase() + d.slice(1).substring(0, 2)).join(", ");
+  return sorted
+    .map(d => {
+      if (!d) return "";
+      const clean = d.trim();
+      return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase().substring(0, 2);
+    })
+    .filter(Boolean)
+    .join(", ");
 };
 
 const getOrdinal = (n: number) => {

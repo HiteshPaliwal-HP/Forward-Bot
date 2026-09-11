@@ -60,7 +60,7 @@ export function CollapsiblePanel({
         aria-hidden={!isOpen}
         className={cn(
           "grid transition-all duration-300 ease-in-out border-border bg-card",
-          isOpen ? "grid-rows-[1fr] opacity-100 border-t" : "grid-rows-[0fr] opacity-0"
+          isOpen ? "grid-rows-[1fr] opacity-100 border-t visible" : "grid-rows-[0fr] opacity-0 invisible"
         )}
       >
         <div className="overflow-hidden">

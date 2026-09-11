@@ -2,7 +2,7 @@
 title: Forward Bot
 status: final
 created: 2026-05-31
-updated: 2026-05-31
+updated: 2026-09-06 (Immediate DB mutation & manual UI cache refresh enhancement)
 
 # PRD: Forward Bot
 
@@ -78,13 +78,13 @@ Downstream workflows must use these terms exactly. FRs and operations use Glossa
 - **Attribution Line** — An optional per-rule prefix or suffix appended to forwarded text, e.g. `From @source_channel`. Per-rule toggle. (New in MVP; not to be confused with native Telegram "Forwarded from X" which is deferred to v2 — see §11.)
 - **Message Mapping** — A persisted record linking one Source Message to its resulting Forwarded Message for a given Forwarding Rule. Required for edit / delete / reply propagation.
 - **Telegram Session** — The persisted MTProto session state.
-- **Hot-Reload Interval** — The period at which the worker refreshes its in-memory rule cache. Default 30s; max acceptable end-to-end staleness 60s.
+- **Hot-Reload Interval** — The background fallback period at which the worker refreshes its in-memory rule cache. Default 30s. Complemented by event-driven immediate refresh on DB mutation (<1s) and manual UI cache refresh trigger.
 
 ## 4. Features
 
 ### 4.1 Telegram Authentication & Session Persistence
 
-**Description:** Forward Bot authenticates to Telegram once as a user account using MTProto. The Channel Operator provides `API_ID`, `API_HASH`, phone number, completes the SMS/2FA challenge during first-run setup; thereafter the service reconnects automatically across restarts using a persisted session.
+**Description:** Forward Bot authenticates to Telegram once as a user account using MTProto. The Channel Operator provides `API_ID`, `API_HASH`, phone number, completes the SMS/2FA challenge; thereafter the service reconnects automatically across restarts using a persisted session. **Enhancement (2026-09-06):** The operator can now initiate, verify, and terminate the Telegram session entirely from the web admin dashboard Settings page (S8), without CLI access or service restart.
 
 #### FR-1: First-run interactive authentication
 
@@ -103,6 +103,79 @@ The service starts and reaches "connected" state without operator interaction wh
 The session artifact is stored only in a path explicitly configured by the operator, never logged, never returned by any API endpoint.
 
 **Consequences:** no log line contains session bytes; no API endpoint exposes session; filesystem permissions on the session directory are the operator's responsibility, documented.
+
+### 4.1-A Telegram Session Management via UI **(NEW enhancement — 2026-09-06)**
+
+**Description:** A new session-management card on the Settings screen (S8) gives the Channel Operator full control over the Telegram MTProto session without CLI access or service restart. The operator can connect (or re-authenticate) a broken/missing session, and can terminate an active session — all from the browser. The backend exposes a dedicated router at `/api/v1/telegram/auth` and the `TelegramClientHolder` gains `reconnect()` and `terminate()` lifecycle methods to support mid-runtime session replacement without restarting the service.
+
+#### FR-46: Session status surface on Settings page **(NEW)**
+
+The Settings page (S8) fetches and displays the current Telegram session state. When connected, it shows a "CONNECTED" indicator (green) and a "Terminate Session" button. When disconnected (session file missing or invalidated), it shows a "DISCONNECTED" indicator (red) and a "Connect Telegram" card.
+
+**Consequences:**
+- `GET /api/v1/telegram/auth/status` returns the phone number if `TELEGRAM_PHONE` is set in the environment. If the env var is absent or empty, the response includes `"phone": null` and `"phone_required": true`.
+- **Phone entry fallback (OQ-14 resolved):** When `phone_required: true`, the "Connect Telegram" card shows an editable phone input field (type `tel`, placeholder `+1234567890`) before the "Send OTP" button. The operator enters their phone number in E.164 format (leading `+`, country code, number). Client-side validation enforces the `+` prefix and rejects non-numeric characters after it. The entered number is sent to `POST /api/v1/telegram/auth/start` in the request body and used for that auth attempt only — it is **not** persisted to the `.env` file by the backend. The operator must add it to `.env` manually for persistence across restarts.
+- When `TELEGRAM_PHONE` is set in env, the phone field is pre-filled, read-only, and masked (last 4 digits visible). The operator does not need to type it.
+- Status polling: the UI refreshes the Telegram status every 10 seconds via TanStack Query's `refetchInterval`; manual refresh is also available. Status transitions (DISCONNECTED → CONNECTED) update the UI in real-time without a page reload.
+- The session status card is only visible on the Settings page; a compact connection indicator (green/red dot) is present in the top bar as per FR-42.
+
+#### FR-47: OTP-based connect flow from the UI **(NEW)**
+
+From the "Connect Telegram" card, the operator clicks **Send OTP**, which triggers `POST /api/v1/telegram/auth/start`. The backend calls Telethon's `send_code_request()` with the configured phone number and stores the resulting `phone_code_hash` in memory (scoped to the ongoing auth attempt). A 6-digit OTP input field is revealed on the card. The operator enters the OTP from their Telegram app and clicks **Connect**, which calls `POST /api/v1/telegram/auth/verify`.
+
+**Consequences:**
+- If `verify` succeeds, the backend calls Telethon's `client.sign_in()`, the `.session` file is written to `TELEGRAM_SESSION_PATH`, and `TelegramClientHolder.reconnect()` is called to dynamically reconnect the worker without a service restart.
+- The UI updates its status indicator to "CONNECTED" within the next polling cycle (≤ 10s) or immediately if the verify response contains `status: connected`.
+- The OTP input field accepts only numeric digits; client-side validation enforces 6-digit length before enabling the **Connect** button.
+- The **Send OTP** button is disabled for 60 seconds after the first click to prevent flooding Telegram's code-send endpoint (client-side throttle; server-side guard also in FR-50).
+
+#### FR-48: 2FA / password-protected accounts **(NEW)**
+
+If a Telegram account has Two-Factor Authentication (a cloud password) enabled, `sign_in()` raises `SessionPasswordNeededError`. The backend catches this and returns HTTP 202 with `{ "requires_2fa": true }`. The UI reveals a password input field; the operator enters their Telegram cloud password and clicks **Submit**.
+
+**Consequences:**
+- The operator submits the password via `POST /api/v1/telegram/auth/verify` with an additional `password` field.
+- If the password is incorrect, Telegram raises `PasswordHashInvalidError`; the backend returns HTTP 401 with `{ "error": "invalid_2fa_password" }`. The UI shows an inline error; the OTP flow remains active.
+- The password field is of type `password` (masked) and is never logged on the backend.
+- A `[NOTE FOR PM]`: Telethon's `check_password()` is the correct call for the cloud password path; `sign_in(password=…)` handles it directly in Telethon ≥ 1.24.
+
+#### FR-49: Terminate Session from UI **(NEW)**
+
+When the session is connected, the Settings page shows a **Terminate Session** button in the Telegram session card. Clicking it opens a confirmation modal.
+
+**Consequences:**
+- The confirmation modal contains an input field with the label "Type `terminate` to confirm" and a **Confirm Terminate** button that is disabled until the operator types the word `terminate` exactly (case-insensitive).
+- On confirmation, `POST /api/v1/telegram/auth/terminate` is called. The backend calls Telethon's `client.log_out()` to revoke the session server-side, deletes the `.session` file at `TELEGRAM_SESSION_PATH`, and marks the `TelegramClientHolder` as disconnected.
+- The UI updates to the disconnected state (the "Connect Telegram" card is shown again).
+- **Event handling during disconnection (OQ-15 resolved — DROP):** In-flight pipeline runs that already hold a local client reference complete normally. Any new source messages arriving after `TelegramClientHolder.terminate()` is called are **dropped** (not queued). Each dropped event is logged as `telegram_session_terminated_drop` with the source message ID and rule ID. This is consistent with FR-2's behavior during a network blip — no buffering.
+- Termination is logged as a structured event `telegram_session_terminated` with the operator's session cookie identity (FR-27 extended).
+
+#### FR-50: Auth edge-case handling **(NEW)**
+
+The auth flow must handle the following edge cases gracefully:
+
+| Edge Case | Backend Behavior | UI Response |
+|---|---|---|
+| **Wrong OTP** | `sign_in()` raises `PhoneCodeInvalidError`; return HTTP 400 `{ "error": "invalid_otp" }` | Inline error on OTP field; field cleared; retry allowed |
+| **Expired OTP** (> 5 min) | Telegram raises `PhoneCodeExpiredError`; return HTTP 400 `{ "error": "otp_expired" }` | Inline error; **Send OTP** button re-enabled to restart the flow |
+| **Concurrent auth attempt** | If a `phone_code_hash` already exists in memory from a prior `/start` call that has not yet been verified or expired, `/start` returns HTTP 409 `{ "error": "auth_in_progress" }` with the time remaining | UI shows "OTP already sent" with a countdown; **Send OTP** button disabled |
+| **Session already connected** | `/start` or `/verify` called when the session is active → HTTP 409 `{ "error": "already_connected" }` | UI shows the connected state; no action needed |
+| **OTP timeout window** | Backend clears the stored `phone_code_hash` after 10 minutes (configurable via `TELEGRAM_OTP_TIMEOUT_SECS`, default 600) | UI shows "Session expired — please start again" after polling detects hash is gone |
+| **Max OTP retries** | After 3 failed OTP attempts, Telegram may ban the code request for a period; backend surfaces the Telethon exception message as `{ "error": "too_many_attempts", "detail": "<Telegram message>" }` | UI shows the Telegram message and disables the flow until the operator refreshes |
+| **Terminate while disconnected** | `/terminate` called when no session exists → HTTP 409 `{ "error": "not_connected" }` | Handled; UI already shows disconnected state |
+
+#### FR-51: `TelegramClientHolder` lifecycle methods **(NEW)**
+
+The `TelegramClientHolder` class gains two new methods to support mid-runtime session replacement:
+
+- **`reconnect(session_path: str) → None`**: Disconnects any existing Telethon client, instantiates a new `TelegramClient` from the updated `.session` file, re-registers all active event handlers, and marks the holder as connected. Called by the auth service after a successful `sign_in()`.
+- **`terminate() → None`**: Sets an internal `_connected = False` flag immediately (so new event dispatches are dropped — OQ-15), then calls `client.log_out()`, then `client.disconnect()`, and deletes the `.session` file. Called by the auth service after operator confirmation.
+
+**Consequences:**
+- Both methods are async and must be `await`-ed by the FastAPI route handler inside an `asyncio` task.
+- The hot-reload loop (FR-12) detects `_connected = False` and pauses rule-cache refreshes until the client is reconnected via `reconnect()`.
+- Thread/async safety: `reconnect()` and `terminate()` acquire an asyncio `Lock` held on the `TelegramClientHolder` to prevent concurrent calls.
+- The `_connected` flag is checked at the top of the worker's event dispatch path; events arriving while `False` are logged as `telegram_session_terminated_drop` and discarded immediately (no pipeline run).
 
 ### 4.2 Source Catalog & Folders **(NEW in MVP)**
 
@@ -327,11 +400,31 @@ For each (Source Message, Forwarding Rule) pair, the pipeline runs in this exact
 - A message containing `"giveaway"` (Block Keyword) with `remove_hashtags=true` and `#giveaway` somewhere — still blocked (step 4 precedes step 11).
 - An Allow-listed message containing a Block Keyword is still blocked (step 4 before step 5).
 
-#### FR-12: Hot-reloaded rule cache
+#### FR-12: Rule Cache Management & Multi-Tier Refresh Strategy **(UPDATED)**
 
-The pipeline reads from an in-memory cache of active Sources, Folders (for UI joins), Forwarding Rules, and Replacement Rules. The cache is refreshed from MongoDB every 30 seconds (configurable). End-to-end staleness from rule change to next applied evaluation ≤ 60 seconds.
+The Processing Pipeline reads from an in-memory `RuleCache` snapshot of active Sources, Folders, Forwarding Rules, and Replacement Rules. To guarantee zero-latency configuration updates while maintaining high availability, the cache operates on a three-tier refresh model:
 
-**Consequences:** unchanged from prior PRD. Non-blocking refresh; in-flight pipeline runs use their snapshot; new cache becomes visible to the next pipeline run.
+##### FR-12a: Event-Driven Instant Cache Refresh on DB Operations **(NEW)**
+Whenever a REST API operation mutates rules, replacement rules, sources, or folders (Create, Update, Delete, Enable, Disable), the system immediately triggers an asynchronous in-memory rebuild of `RuleCache` and atomically swaps `CacheHolder.current`.
+
+**Consequences:**
+- Rule and source changes take effect in memory in < 1 second.
+- In-flight pipeline evaluations finish cleanly using their existing cache snapshot; subsequent message evaluations immediately pick up the new snapshot.
+- Mutation API requests return successful HTTP responses without blocking on cache rebuild completion.
+
+##### FR-12b: Manual UI & REST Endpoint Cache Refresh **(NEW)**
+The backend exposes `POST /api/v1/admin/cache/refresh` (and `/api/v1/cache/refresh`) allowing the operator to manually trigger an instant cache rebuild. The Web Admin Dashboard (Settings page S8 and header action bar) features a **"Refresh Cache"** button.
+
+**Consequences:**
+- Clicking **"Refresh Cache"** triggers an immediate `build_rule_cache()` call.
+- The UI surfaces a success toast notification displaying the refreshed cache metadata (`version`, `rule_count`, `source_count`, `refreshed_at` timestamp).
+- Provides an explicit manual recovery mechanism if cache state ever drifts or if manual DB updates are performed out-of-band.
+
+##### FR-12c: Fallback Periodic Background Refresh
+The background `run_cache_refresher` task continues to run periodically based on `HOT_RELOAD_INTERVAL` (default: 30 seconds, configurable via environment variable).
+
+**Consequences:**
+- Serves as a resilient safety net / fallback safeguard to guarantee eventual consistency (max staleness ≤ 30s) even if event-driven invalidations fail or external DB modifications occur.
 
 #### FR-13: URL stripping coverage
 
@@ -590,8 +683,20 @@ Unchanged endpoint families from prior PRD, plus:
 - `GET    /api/v1/logs/recent?limit=N` — last N log lines from the ring buffer (S1 recent-activity panel).
 - `GET    /api/v1/logs/stream` — SSE stream of live log events (S7), filterable by query params `event`, `correlation_id`.
 - `GET    /api/v1/logs/search?correlation_id=…&since=…` — search recent log ring buffer (FR-44).
-- `POST   /api/v1/admin/reconnect` — operator-triggered Telegram reconnect (S8 Settings).
+- `POST   /api/v1/admin/cache/refresh` — operator-triggered manual cache rebuild (FR-12b). Returns updated cache metadata (`version`, `rule_count`, `source_count`, `refreshed_at`).
+- `POST   /api/v1/admin/reconnect` — operator-triggered Telegram reconnect (S8 Settings). `[SUPERSEDED by §4.1-A — use /api/v1/telegram/auth/* instead]`
 - `GET    /` (and any non-API path) — serves the compiled UI bundle when `UI_ENABLED=true` (FR-45).
+
+**Telegram Session Management (NEW — §4.1-A, FR-46–FR-51)**
+
+All endpoints require the standard session cookie / `X-API-Key`. The router is mounted at `/api/v1/telegram/auth`.
+
+| Method | Path | FR | Description |
+|--------|------|----|-------------|
+| `GET`  | `/api/v1/telegram/auth/status` | FR-46 | Returns `{ "connected": bool, "phone": "<masked or null>", "phone_required": bool, "session_path": "<path>" }`. `phone_required: true` when `TELEGRAM_PHONE` is absent from env. Phone masked to last 4 digits when present. |
+| `POST` | `/api/v1/telegram/auth/start` | FR-47 | Body: `{ "phone": "+1234567890" }` (required when `phone_required: true`; optional when env var is set — env var takes precedence). Triggers `send_code_request()`. Stores `phone_code_hash` in memory. Returns `{ "status": "otp_sent", "expires_in_seconds": 600 }`. HTTP 409 if auth already in progress or already connected. HTTP 422 if phone is absent and not in env, or if phone format is invalid (must match `^\+[1-9]\d{6,14}$`). |
+| `POST` | `/api/v1/telegram/auth/verify` | FR-47, FR-48 | Body: `{ "otp": "123456", "password": "<optional 2FA>" }`. On success: calls `sign_in()`, writes session, calls `TelegramClientHolder.reconnect()`, returns `{ "status": "connected" }`. On 2FA required (first call without password): returns HTTP 202 `{ "requires_2fa": true }`. Errors per FR-50 edge-case table. |
+| `POST` | `/api/v1/telegram/auth/terminate` | FR-49 | Sets `_connected = False` immediately (drops new events), calls `client.log_out()`, deletes `.session` file, calls `TelegramClientHolder.terminate()`. Returns `{ "status": "terminated" }`. HTTP 409 if not connected. |
 
 **Forwarding Rules, Replacement Rules, Health** — same as prior PRD.
 
@@ -647,6 +752,9 @@ All risks from prior PRD remain. **New risk introduced by MVP scope expansion:**
 | **Time-window mis-evaluation across DST transitions** in operator's chosen timezone.                                                                                                             | Low        | Low    | Use IANA timezone names + `zoneinfo` (Python stdlib); rely on OS tzdata being current; document in operator runbook to keep host tzdata updated.                                                          |
 | **Reply forwarding produces orphan replies** when parent was blocked by filter — destination shows replies-to-nothing                                                                            | Medium     | Low    | FR-40 explicitly defines fallback (post standalone with log); accepted MVP behavior. `[NOTE FOR PM]` — observe in production; if confusing, add "Re:" prefix or skip the reply entirely as a v1.1 toggle. |
 | **Media Replacement file path mistakes** (operator typos / file deletions) cause silent fallback to source photo                                                                                 | Medium     | Low    | FR-41 fallback is logged WARNING; readiness check at startup verifies configured replacement paths exist (best-effort).                                                                                   |
+| **Mid-runtime `reconnect()` / `terminate()` race conditions** — if the worker is processing messages and `reconnect()` swaps the client, in-flight Telethon calls may reference a stale client. | Medium     | Medium | FR-51: `reconnect()` and `terminate()` acquire an asyncio `Lock`; in-flight pipeline tasks hold a local reference to the client object obtained before the lock swap — they complete with the old reference while new events are blocked until the swap is complete. Accepted small window of missed events during reconnect (logged). |
+| **OTP flooding / Telegram rate-limiting** — repeated `/start` calls could trigger Telegram's phone-code rate limits, temporarily locking the phone number out of receiving SMS/app codes.       | Low        | High   | FR-50: client-side 60s throttle on the "Send OTP" button; server-side 409 with time-remaining for in-progress sessions; `phone_code_hash` is cleared after 10 minutes to allow retry. |
+| **Session file deleted externally while `terminate()` is in progress** — double-delete could cause a file-not-found error that surfaces as a 500 to the operator.                               | Low        | Low    | `terminate()` checks for file existence before deletion; missing file is logged as a WARNING, not an exception; the response still returns `{ "status": "terminated" }`. |
 
 
 ## 13. Assumptions Index
@@ -664,15 +772,24 @@ All assumptions from prior PRD that remain valid, **plus new MVP-feature assumpt
 - §10 NFR-Perf: **Cache refresh ≤ 1s for 1,000 rules + 1,000 Sources + 50 Folders.** Confirm scale targets.
 - All assumptions from prior PRD that did not relate to dropped features remain unchanged.
 
-## 14. Open Questions
+**New assumptions introduced by §4.1-A (Telegram Session Management via UI — 2026-09-06):**
 
-All open questions resolved as of 2026-05-31.
+- FR-46: **Phone number source (OQ-14 closed):** `TELEGRAM_PHONE` env var is preferred; when absent, the operator enters the phone in the UI in E.164 format (`+<country><number>`). The backend validates the format against `^\+[1-9]\d{6,14}$` before calling `send_code_request()`. The entered phone is used for that auth session only; it is not persisted to `.env` automatically — the operator must add it manually for persistence across restarts.
+- FR-46: **Status polling interval is 10 seconds** via TanStack Query `refetchInterval`. Confirm this is acceptable UX latency for seeing state change (DISCONNECTED → CONNECTED) after verify.
+- FR-47: **`phone_code_hash` is stored in-memory (not in MongoDB)** — a service restart during an in-progress OTP flow loses the hash and the operator must restart the flow. Accepted trade-off for implementation simplicity. `[ASSUMPTION: confirm no persistence requirement for the hash]`
+- FR-47: **OTP code source is the Telegram mobile app notification or SMS** — not Telegram Desktop. No assumption about the operator's Telegram client; Telethon's `send_code_request()` lets Telegram decide delivery channel.
+- FR-48: **2FA password handling uses Telethon's `sign_in(password=…)` path** (Telethon ≥ 1.24). Confirm the deployed Telethon version supports this.
+- FR-50: **OTP timeout is 10 minutes** (`TELEGRAM_OTP_TIMEOUT_SECS=600` default). This is longer than Telegram's own 5-minute OTP validity window; in practice the OTP expires at Telegram's end first. The server-side timeout serves as a cleanup guard. `[ASSUMPTION]`
+- FR-50: **Max OTP retry count before Telegram bans is 3** — this is Telethon / Telegram behavior, not configurable by Forward Bot. The error message is surfaced verbatim from Telethon.
+- FR-51: **`TelegramClientHolder.reconnect()` re-registers all Telethon event handlers** programmatically — confirm that the existing handler-registration code is encapsulated in a callable method (not buried in startup) so `reconnect()` can invoke it cleanly.
+
+## 14. Open Questions
 
 1. **OQ-Name. Closed.** "Forward Bot" is the confirmed product name.
 2. **OQ-ChannelRef. Closed.** Settled by FR-29: numeric Telegram ID is canonical; username stored as metadata.
 3. **OQ-MappingRetention. Closed.** 30-day retention is **global** (one `MAPPING_RETENTION_DAYS` env var, default 30). Per-rule retention deferred to post-MVP.
 4. **OQ-DLQ. Closed.** Logging-only in MVP. Failed forwards are observable via structured logs and correlation-ID search (FR-44). `GET /api/v1/failures` deferred to post-MVP.
-5. **OQ-AuthUX. Closed.** First-run Telegram authentication via `python -m forward_bot auth` inside the container (interactive CLI). Already documented in addendum §4.2. No REST endpoint for auth in MVP.
+5. **OQ-AuthUX. Re-resolved (2026-09-06).** Originally closed as "interactive CLI (`python -m forward_bot auth`)." **Enhancement §4.1-A supersedes this for ongoing operations:** the operator can initiate, verify, and terminate sessions from the Settings page UI via `/api/v1/telegram/auth/*`. The CLI path remains as a fallback for initial server setup without UI access. Both paths are supported.
 6. **OQ-Seed. Closed.** API-only. No YAML/JSON seed file at startup. Operators configure via dashboard or REST API. Seed file support deferred to post-MVP.
 7. **OQ-RuleActiveDefault. Closed.** Created rules default to `is_active=false`. Operator explicitly activates after review. (Confirmed by EXPERIENCE.md §Key Flows, Flow 2.)
 8. **OQ-FolderDefault. Closed.** Newly-registered Sources are unassigned by default. Operator assigns to a Folder afterward.
@@ -681,6 +798,8 @@ All open questions resolved as of 2026-05-31.
 11. **OQ-UI-Auth-Cookie-TTL. Closed.** Session cookie expiry is **24 hours** (HttpOnly, SameSite=Strict). Browser-session-only is insufficient for a self-hosted tool used across sessions.
 12. **OQ-UI-Stream. Closed.** **SSE** (Server-Sent Events) for the live log stream (`GET /api/v1/logs/stream`). One-way server-push; simpler than WebSocket; sufficient for the read-only log tail use case. (Confirmed by EXPERIENCE.md.)
 13. **OQ-Logs-Retention. Closed.** In-memory ring buffer sized for **1 hour** by default, configurable up to **24 hours** via `LOG_RING_BUFFER_HOURS` env var. Older events are not retained server-side; stdout collectors are the operator's long-term log store.
+14. **OQ-SessionMgmt-PhoneSource. Closed (2026-09-06).** If `TELEGRAM_PHONE` is absent from env, the operator enters the phone number in the UI in E.164 format (`+<country><number>`). The backend validates format (`^\+[1-9]\d{6,14}$`) and uses it for that auth session only. Not persisted to `.env` automatically; operator adds manually for persistence. `GET /api/v1/telegram/auth/status` returns `phone_required: true` when env var is absent to signal the UI to show the input field. (FR-46, FR-47 updated.)
+15. **OQ-SessionMgmt-WorkerPause. Closed (2026-09-06).** Events arriving after `TelegramClientHolder.terminate()` sets `_connected = False` are **dropped** (not queued). Each drop is logged as `telegram_session_terminated_drop`. Consistent with FR-2's no-buffering stance on network blips. (FR-49, FR-51 updated.)
 
 ---
 

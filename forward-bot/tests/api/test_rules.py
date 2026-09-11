@@ -814,3 +814,31 @@ async def test_list_rules_invalid_folder_id_format(app, headers):
     assert res.json()["error"]["code"] == "http_error"
     assert res.json()["error"]["message"] == "Invalid folder_id format."
 
+
+@pytest.mark.asyncio
+async def test_rule_mutation_triggers_cache_rebuild(app, headers):
+    """Creating a rule enqueues background cache rebuild."""
+    import asyncio
+    mock_rule_repo = MagicMock()
+    mock_source_repo = MagicMock()
+    mock_source_repo.get_source_by_id = AsyncMock(return_value=make_source())
+    mock_rule_repo.add_rule = AsyncMock(
+        side_effect=lambda r: setattr(r, "id", RULE_OID) or RULE_OID
+    )
+
+    app.dependency_overrides[get_rule_repository] = lambda: mock_rule_repo
+    app.dependency_overrides[get_source_repository] = lambda: mock_source_repo
+
+    payload = minimal_create_payload()
+
+    with patch("forward_bot.api.routers.rules.trigger_cache_rebuild") as mock_rebuild:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            res = await ac.post("/api/v1/rules", json=payload, headers=headers)
+
+        assert res.status_code == 201
+        await asyncio.sleep(0.05)
+        mock_rebuild.assert_called_once()
+
+    app.dependency_overrides.clear()
+
+

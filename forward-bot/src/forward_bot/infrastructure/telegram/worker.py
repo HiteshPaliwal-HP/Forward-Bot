@@ -1,10 +1,9 @@
 """Telegram worker infrastructure for end-to-end message forwarding."""
 import asyncio
-import contextvars
 import uuid
 from io import BytesIO
 import structlog
-from telethon import events
+from telethon import events, utils
 from telethon.tl.types import PeerChannel, PeerChat, PeerUser, MessageMediaPhoto, DocumentAttributeFilename
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
@@ -37,6 +36,8 @@ class TelegramWorker:
         self.sampling_counters = {}  # In-memory counters {rule_id: counter} for sampling
         self._sampling_lock = asyncio.Lock()  # Guards concurrent read-modify-write on sampling_counters
         self._handler = None
+        self._edit_handler = None
+        self._delete_handler = None
         # Album (media group) buffering: keyed by grouped_id
         # Each entry: {"messages": [...], "source": source_entity, "correlation_id": str}
         self._album_buffers: dict = {}
@@ -46,23 +47,15 @@ class TelegramWorker:
         """Starts the worker, registers the event handler, and enters the lifecycle loop."""
         from forward_bot.infrastructure.telegram import telegram_client
 
-        if not telegram_client.is_connected or telegram_client.client is None:
-            logger.error("telegram_worker_failed", error="Telegram client not connected")
-            return
-
-        client = telegram_client.client
         logger.info("telegram_worker_started", status="active")
 
-        # Define event handler inside to access self context easily
-        @client.on(events.NewMessage)
+        # Define event handlers
         async def handle_new_message(event: events.NewMessage.Event) -> None:
             await self.process_event(event)
 
-        @client.on(events.MessageEdited)
         async def handle_message_edited(event: events.MessageEdited.Event) -> None:
             await self.process_edit_event(event)
 
-        @client.on(events.MessageDeleted)
         async def handle_message_deleted(event: events.MessageDeleted.Event) -> None:
             await self.process_delete_event(event)
 
@@ -74,17 +67,41 @@ class TelegramWorker:
         reload_task = asyncio.create_task(self.reload_loop())
 
         try:
-            # Await client disconnection gracefully (retains block until cancelled)
-            await client.run_until_disconnected()
+            while True:
+                # Wait until client is initialized and connected
+                while not telegram_client.is_connected or telegram_client.client is None:
+                    await asyncio.sleep(1.0)
+                
+                client = telegram_client.client
+                
+                # Register event handlers using add_event_handler for the current client instance
+                client.add_event_handler(self._handler, events.NewMessage())
+                client.add_event_handler(self._edit_handler, events.MessageEdited())
+                client.add_event_handler(self._delete_handler, events.MessageDeleted())
+                
+                try:
+                    # Await client disconnection gracefully (retains block until disconnected/cancelled)
+                    await client.run_until_disconnected()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error("telegram_worker_loop_error", error=str(e))
+                finally:
+                    # Cleanup handlers from the old client just in case
+                    try:
+                        client.remove_event_handler(self._handler, events.NewMessage())
+                        client.remove_event_handler(self._edit_handler, events.MessageEdited())
+                        client.remove_event_handler(self._delete_handler, events.MessageDeleted())
+                    except Exception:
+                        pass
+                
+                # Client disconnected, sleep briefly before trying to acquire the new client
+                await asyncio.sleep(1.0)
+
         except asyncio.CancelledError:
             logger.info("telegram_worker_stopped")
             reload_task.cancel()
             await asyncio.gather(reload_task, return_exceptions=True)
-            # Unregister event handlers if client is still alive
-            if telegram_client.client:
-                telegram_client.client.remove_event_handler(self._handler, events.NewMessage)
-                telegram_client.client.remove_event_handler(self._edit_handler, events.MessageEdited)
-                telegram_client.client.remove_event_handler(self._delete_handler, events.MessageDeleted)
             raise
 
     async def reload_loop(self) -> None:
@@ -149,12 +166,15 @@ class TelegramWorker:
             else:
                 # Resolve the entity first to ensure we handle channel/group IDs properly
                 try:
-                    entity = await client.get_entity(target)
+                    input_peer = await client.get_input_entity(target)
+                    # JoinChannelRequest requires InputChannel, not the generic InputPeer returned
+                    # by get_input_entity(). utils.get_input_channel converts InputPeerChannel -> InputChannel.
+                    channel = utils.get_input_channel(input_peer)
                 except Exception as e:
                     logger.warning("worker_entity_resolution_failed", target=str(target), error=str(e))
                     return
 
-                await client(JoinChannelRequest(entity))
+                await client(JoinChannelRequest(channel))
                 logger.info(
                     "worker_joined_channel",
                     source_id=source.id,
@@ -172,6 +192,11 @@ class TelegramWorker:
 
     async def process_event(self, event: events.NewMessage.Event) -> None:
         """Processes an incoming message event through the pipeline engine for matching rules."""
+        from forward_bot.infrastructure.telegram import telegram_client
+        if not telegram_client.is_connected or not getattr(telegram_client, "_connected", True):
+            logger.info("telegram_session_terminated_drop", message="Dropped incoming event because Telegram session is terminated or disconnected.")
+            return
+
         if not event.message:
             return
 
@@ -308,7 +333,14 @@ class TelegramWorker:
 
             tasks = [asyncio.create_task(_execute_and_log(rule)) for rule in matching_rules]
             if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for exc in results:
+                    if isinstance(exc, Exception):
+                        structlog.get_logger().error(
+                            "worker_task_exception",
+                            error=str(exc),
+                            correlation_id=correlation_id,
+                        )
 
         except asyncio.CancelledError:
             raise
@@ -484,7 +516,7 @@ class TelegramWorker:
                     file_arg = [m.media for m in cached_sent_messages if m.media is not None]
                 else:
                     # Rewind BytesIO buffers if we've already downloaded
-                    if downloaded and isinstance(files_to_send[0], BytesIO):
+                    if downloaded and files_to_send and isinstance(files_to_send[0], BytesIO):
                         for f in files_to_send:
                             f.seek(0)
                     file_arg = files_to_send
@@ -494,6 +526,9 @@ class TelegramWorker:
                     file=file_arg,
                     caption=album_caption,
                 )
+
+                # Capture before updating so the flag reflects whether cache was *used* for this send
+                was_cached = cached_sent_messages is not None
 
                 # Cache the sent messages for reuse (Optimization 2)
                 if cached_sent_messages is None:
@@ -507,10 +542,10 @@ class TelegramWorker:
                     source_message_ids=[m.id for m in messages],
                     destination_message_ids=dest_ids,
                     correlation_id=correlation_id,
-                    used_cache=cached_sent_messages is not None,
+                    used_cache=was_cached,
                 )
 
-            except (ChatForwardsRestrictedError, Exception) as e:
+            except Exception as e:
                 is_protected = isinstance(e, ChatForwardsRestrictedError) or (
                     hasattr(e, "__class__") and "ChatForwardsRestricted" in e.__class__.__name__
                 ) or ("protected chat" in str(e).lower())
@@ -574,6 +609,11 @@ class TelegramWorker:
 
     async def process_edit_event(self, event: events.MessageEdited.Event) -> None:
         """Processes an incoming message edit event and propagates it to all mapped destinations."""
+        from forward_bot.infrastructure.telegram import telegram_client
+        if not telegram_client.is_connected or not getattr(telegram_client, "_connected", True):
+            logger.info("telegram_session_terminated_drop", message="Dropped edit event because Telegram session is terminated or disconnected.")
+            return
+
         if not event.message:
             return
 
@@ -608,14 +648,20 @@ class TelegramWorker:
         # For each mapping, run propagation using contextvars copy_context to isolate correlation_id
         tasks = []
         for mapping in mappings:
-            ctx = contextvars.copy_context()
             tasks.append(
                 asyncio.create_task(
-                    ctx.run(self.propagate_edit_for_mapping, mapping, event, correlation_id)
+                    self.propagate_edit_for_mapping(mapping, event, correlation_id)
                 )
             )
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for exc in results:
+                if isinstance(exc, Exception):
+                    structlog.get_logger().error(
+                        "worker_edit_task_exception",
+                        error=str(exc),
+                        correlation_id=correlation_id,
+                    )
 
     async def propagate_edit_for_mapping(
         self,
@@ -678,6 +724,11 @@ class TelegramWorker:
 
     async def process_delete_event(self, event: events.MessageDeleted.Event) -> None:
         """Processes an incoming message deletion event and propagates it to all mapped destinations."""
+        from forward_bot.infrastructure.telegram import telegram_client
+        if not telegram_client.is_connected or not getattr(telegram_client, "_connected", True):
+            logger.info("telegram_session_terminated_drop", message="Dropped delete event because Telegram session is terminated or disconnected.")
+            return
+
         # Extract source channel ID
         event_tg_id = None
         if event.chat_id is not None:
@@ -706,14 +757,20 @@ class TelegramWorker:
         # For each destination channel, dispatch the batched deletion
         tasks = []
         for dest_channel_id, channel_mappings in grouped_mappings.items():
-            ctx = contextvars.copy_context()
             tasks.append(
                 asyncio.create_task(
-                    ctx.run(self.propagate_delete_for_channel, dest_channel_id, channel_mappings, correlation_id)
+                    self.propagate_delete_for_channel(dest_channel_id, channel_mappings, correlation_id)
                 )
             )
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for exc in results:
+                if isinstance(exc, Exception):
+                    structlog.get_logger().error(
+                        "worker_delete_task_exception",
+                        error=str(exc),
+                        correlation_id=correlation_id,
+                    )
 
     async def propagate_delete_for_channel(
         self,

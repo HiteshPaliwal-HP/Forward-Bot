@@ -2,7 +2,7 @@
 name: Forward Bot
 description: Operator dashboard for a self-hosted Telegram forwarding worker. shadcn/ui on React + Tailwind; this DESIGN.md specifies the brand-layer delta only.
 status: final
-updated: 2026-05-31
+updated: 2026-09-06
 sources:
   - ../../prds/prd-forward-bot-2026-05-31/prd.md
   - ../../prds/prd-forward-bot-2026-05-31/addendum.md
@@ -130,6 +130,39 @@ components:
     border: '{colors.state-warning-border}'
     foreground: '{colors.state-warning-foreground}'
     radius: '{rounded.full}'
+  # ---- Session management card (S8) — FR-46 through FR-51 ----
+  session-card-connected:
+    border: '{colors.state-success-border}'
+    background: '{colors.state-success-bg}'
+    foreground: '{colors.foreground}'
+    indicator-color: '{colors.state-success}'
+    indicator-icon: 'lucide:circle-check'
+  session-card-disconnected:
+    border: '{colors.state-error-border}'
+    background: '{colors.state-error-bg}'
+    foreground: '{colors.foreground}'
+    indicator-color: '{colors.state-error}'
+    indicator-icon: 'lucide:circle-x'
+  session-card-pending:
+    border: '{colors.state-warning-border}'
+    background: '{colors.state-warning-bg}'
+    foreground: '{colors.foreground}'
+    indicator-color: '{colors.state-warning}'
+    indicator-icon: 'lucide:loader-circle'
+  session-otp-input:
+    # 6-box OTP layout; each box inherits shadcn Input radius and border.
+    # Active/focused box gets accent ring.
+    focused-ring: '{colors.accent}'
+    error-ring: '{colors.state-error}'
+  session-terminate-danger-zone:
+    # Confirm-terminate modal danger section — distinct from state-error field errors.
+    border: '{colors.state-error-border}'
+    background: '{colors.state-error-bg}'
+    label-foreground: '{colors.state-error}'
+    radius: '{rounded.md}'
+  log-row-session-terminated-drop:
+    accent-color: '{colors.state-warning}'
+    icon: 'lucide:zap-off'
 ---
 
 # Forward Bot — DESIGN.md
@@ -221,3 +254,6 @@ Brand-layer components (visual specs; behavior lives in EXPERIENCE.md):
 | Use `state-muted` for `outside_time_window` / `sampled_out` / `blocked_keyword` / `media_type_filtered` log rows. They are not errors — they are intentional suppressions. | Render filter-blocked rows in red or warning amber. That collapses "the system did what I asked" into "the system failed." |
 | Use the warm-stone neutral set (`#FAFAF9` / `#14130F` and friends). | Switch to a cold zinc or cool slate neutral — the warm stone is part of the brand. |
 | Keep collapsible panel headers (S3) summarizing state in `foreground-muted` text. | Let a panel header collapse without surfacing what's inside. "All collapsed by default" only works if the header *says enough*. |
+| Use `{components.session-card-connected}` (green tinted) and `{components.session-card-disconnected}` (red tinted) as the two mutually exclusive session states — never show them simultaneously. | Re-use the `{components.pill-success}` design token for the session card border — the card is a large interactive surface, not a status pill. |
+| Show the **Terminate Session** button only when the session is `CONNECTED`. Use `{components.session-terminate-danger-zone}` styling (red-tinted section inside the card, not a standalone page-level error). | Render the terminate confirmation inline in the card without the shadcn `AlertDialog` modal — the require-to-type confirmation pattern needs a focused overlay. |
+| Use `{colors.state-warning}` for `telegram_session_terminated_drop` log rows — sessions terminating in-flight are **not errors**, just intentional drops. | Use `{colors.state-error}` for dropped-event rows during a planned session termination. |

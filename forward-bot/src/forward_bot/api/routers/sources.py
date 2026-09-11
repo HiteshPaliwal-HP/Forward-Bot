@@ -1,8 +1,10 @@
 """FastAPI router for source catalog management."""
-from fastapi import APIRouter, Depends, status, Query, HTTPException
+from fastapi import APIRouter, Depends, status, Query, HTTPException, BackgroundTasks
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from forward_bot.api.dependencies.auth import get_current_operator
-from forward_bot.api.dependencies.providers import get_source_repository, get_telegram_client
+from forward_bot.api.dependencies.providers import get_source_repository, get_telegram_client, get_db
+from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
 from forward_bot.api.schemas.source import (
     SourceRegisterRequest,
     SourceResponse,
@@ -29,6 +31,8 @@ router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 )
 async def register_source(
     payload: SourceRegisterRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     source_repo: SourceRepository = Depends(get_source_repository),
     tg_client: TelegramClientHolder = Depends(get_telegram_client),
     _: str = Depends(get_current_operator),
@@ -39,6 +43,7 @@ async def register_source(
         telegram_reference=payload.telegram_reference,
         display_name=payload.display_name
     )
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return SourceResponse.from_entity(source)
 
 
@@ -67,12 +72,15 @@ async def get_source(
 )
 async def delete_source(
     source_id: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     source_repo: SourceRepository = Depends(get_source_repository),
     _: str = Depends(get_current_operator),
 ) -> None:
     """Delete a registered source if it is not currently referenced by any forwarding rules."""
     use_case = DeleteSource(source_repo)
     await use_case.execute(source_id)
+    background_tasks.add_task(trigger_cache_rebuild, db)
 
 
 @router.get(
@@ -133,6 +141,8 @@ async def list_sources(
 async def update_source(
     source_id: str,
     payload: SourceUpdateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     source_repo: SourceRepository = Depends(get_source_repository),
     _: str = Depends(get_current_operator),
 ) -> SourceResponse:
@@ -148,6 +158,7 @@ async def update_source(
         update_fields=update_fields,
         partial=False
     )
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return SourceResponse.from_entity(source)
 
 
@@ -160,6 +171,8 @@ async def update_source(
 async def patch_source(
     source_id: str,
     payload: SourcePatchRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncIOMotorDatabase = Depends(get_db),
     source_repo: SourceRepository = Depends(get_source_repository),
     _: str = Depends(get_current_operator),
 ) -> SourceResponse:
@@ -175,5 +188,7 @@ async def patch_source(
         update_fields=update_fields,
         partial=True
     )
+    background_tasks.add_task(trigger_cache_rebuild, db)
     return SourceResponse.from_entity(source)
+
 

@@ -51,3 +51,35 @@ async def test_admin_reconnect(app):
         mock_tc.connect.assert_called_once_with(app.state.settings)
         # Verify old worker_task was cancelled
         app.state.worker_task.cancel.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_cache_refresh(app):
+    headers = {"X-API-Key": "test-api-key"}
+    
+    with patch("forward_bot.api.routers.admin.trigger_cache_rebuild") as mock_rebuild, \
+         patch("forward_bot.api.dependencies.providers.mongo_client") as mock_mc:
+        mock_mc.db = MagicMock()
+        from forward_bot.infrastructure.cache.rule_cache import RuleCache
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        mock_cache = RuleCache(
+            sources={"src1": MagicMock()},
+            rules=[MagicMock(), MagicMock()],
+            version=5,
+            refreshed_at=now,
+        )
+        mock_rebuild.return_value = mock_cache
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.post("/api/v1/admin/cache/refresh", headers=headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["version"] == 5
+        assert data["rule_count"] == 2
+        assert data["source_count"] == 1
+        assert "refreshed_at" in data
+        mock_rebuild.assert_called_once()
+

@@ -107,7 +107,8 @@ const CONFIG_MAP: Record<LogRowVariant, {
   },
 };
 
-const formatEventLabel = (event: string) => {
+const formatEventLabel = (event?: string) => {
+  if (!event) return "";
   return event
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -204,7 +205,7 @@ export function LogRow({ entry, onFilterByCorrelationId }: LogRowProps) {
         </div>
 
         <div className="flex-shrink-0 flex items-center">
-          <Tooltip content={new Date(entry.timestamp).toLocaleString()}>
+          <Tooltip content={isNaN(new Date(entry.timestamp).getTime()) ? entry.timestamp : new Date(entry.timestamp).toLocaleString()}>
             <span className="text-[11px] text-muted-foreground/70 font-semibold tabular-nums">
               {formatTimestamp(entry.timestamp)}
             </span>

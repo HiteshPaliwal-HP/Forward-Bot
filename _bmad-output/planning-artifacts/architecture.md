@@ -3,6 +3,7 @@ stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 lastStep: 8
 status: 'complete'
 completedAt: '2026-06-02'
+updatedAt: '2026-09-06'
 inputDocuments:
   - prds/prd-forward-bot-2026-05-31/prd.md
   - prds/prd-forward-bot-2026-05-31/addendum.md
@@ -22,16 +23,16 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Requirements Overview
 
-**Functional Requirements — 45 FRs across 13 categories:**
+**Functional Requirements — 51 FRs across 14 categories:**
 
-1. **Auth & Session (FR-1–3):** MTProto auth once; persisted SQLiteSession; auto-reconnect
-   on restart; session artifact never exposed via API or logs.
+1. **Auth & Session (FR-1–3, FR-46–51):** MTProto auth once; persisted SQLiteSession; auto-reconnect
+   on restart; session artifact never exposed via API or logs. Enhanced with interactive session management via UI (S8) and dynamic worker reconnect/terminate lifecycle without service restarts.
 2. **Source Catalog & Folders (FR-29–31):** Sources are first-class entities with stable
    internal IDs; Telegram numeric ID resolved at registration; Folder assignment is
    display-only, not routing.
 3. **Forwarding Rules (FR-4–6, FR-31a):** Full CRUD + enable/disable without restart;
    per-rule attribution prefix/suffix; strict validation (422 on bad regex, missing
-   source_id, self-referential rule).
+   source_id, self-referential rule). Immediate cache refresh on mutation + manual trigger.
 4. **Replacement Rules (FR-7–8, FR-38):** Literal (case-insensitive) and regex
    substitutions; link substitution reuses the same mechanism; created_at ordering.
 5. **Message Ingestion (FR-9–10):** Worker subscribes to every Source referenced by ≥1
@@ -57,6 +58,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 13. **Web Admin Dashboard (FR-42–45):** 8 screens served from same FastAPI container;
     cookie-based auth (HttpOnly, SameSite=Strict, 24h TTL); SSE live log stream; Vite
     build compiled into image at build time.
+14. **Telegram Session Management via UI (FR-46–51):** UI-driven session status, OTP start/verify flow, 2FA cloud password handling, explicit session termination, worker event drop on disconnection, and `TelegramClientHolder` dynamic reconnect/terminate lifecycle.
 
 **Non-Functional Requirements:**
 
@@ -265,6 +267,8 @@ The worker always reads `cache_holder.current` at the start of each message disp
 In-flight pipeline runs hold a local reference to their snapshot; the next refresh
 does not affect them.
 
+*Enhancement (2026-09-06):* In addition to the 30-second background fallback loop, all write mutations on rules, sources, folders, or replacement rules trigger an **immediate async cache refresh** (<1s latency). Furthermore, a dedicated REST endpoint `POST /api/v1/rules/cache/refresh` and a manual UI refresh button are provided for operator-forced snapshot reloads.
+
 **D2 — Regex Compilation: Per-Snapshot, Stored on Cache**
 Decision: During cache refresh, compile all regex patterns from `block_keywords`,
 `allow_keywords`, and `replacement_rules` (where `match_mode=regex`). Store compiled
@@ -341,6 +345,15 @@ if not candidate.is_relative_to(base):
 This check runs at pipeline execution time (not rule-save time) because the base
 dir could change via env var between saves.
 
+**S4 — Telegram Session Management & Lifecycle (`TelegramClientHolder`)**
+Decision: Manage MTProto session lifecycle mid-runtime via dedicated endpoints (`/api/v1/telegram/auth/status`, `/start`, `/verify`, `/terminate`) and `TelegramClientHolder` methods (`reconnect()` and `terminate()`).
+
+Key architecture invariants:
+1. **Thread/Async Safety:** `reconnect()` and `terminate()` acquire an `asyncio.Lock` held on `TelegramClientHolder` to prevent concurrent auth state swaps. In-flight pipeline executions hold a local reference to the client obtained before lock swap and complete normally.
+2. **Event Disconnect Handling (OQ-15):** When `terminate()` sets internal flag `_connected = False`, new source events arriving are dropped immediately (no queueing/buffering) and logged as `telegram_session_terminated_drop`.
+3. **In-Memory Auth State:** The ongoing `phone_code_hash` is kept strictly in-memory (10 min TTL cleanup) and cleared on success/timeout.
+4. **Phone Entry Fallback (OQ-14):** When `TELEGRAM_PHONE` is absent from `.env`, phone number is entered via UI, validated via E.164 regex (`^\+[1-9]\d{6,14}$`), and used ephemerally for that auth attempt.
+
 ---
 
 ### API & Communication Patterns
@@ -387,9 +400,10 @@ No reason to disable.
 
 | Endpoint | staleTime | refetchInterval | Notes |
 |----------|-----------|-----------------|-------|
-| Rules list (`/api/v1/rules`) | 30s | — | Matches hot-reload interval |
+| Rules list (`/api/v1/rules`) | 30s | — | Instant invalidation on mutation + manual trigger |
 | Sources + Folders | 60s | — | Change infrequently |
 | Health endpoints | 0 | 10s | Always fresh for S1 cards |
+| Telegram session status (`/api/v1/telegram/auth/status`) | 0 | 10s | S8 Settings page card; real-time session status |
 | Stats summary | 0 | 30s | Dashboard counters |
 | Logs recent panel (S1) | 0 | 5s | Per addendum §9.3 |
 | SSE log stream (S7) | n/a | n/a | Direct `EventSource`, not TQ |

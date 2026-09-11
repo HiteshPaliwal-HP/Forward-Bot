@@ -1,9 +1,13 @@
 """FastAPI router for administrative tasks."""
 import asyncio
 from fastapi import APIRouter, Depends, status, Request
+from datetime import datetime
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from forward_bot.api.dependencies.auth import get_current_operator
+from forward_bot.api.dependencies.providers import get_db
+from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
 from forward_bot.infrastructure.logging import logger
 from forward_bot.infrastructure.telegram import telegram_client
 from forward_bot.infrastructure.mongo import mongo_client
@@ -13,6 +17,14 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 class AdminReconnectResponse(BaseModel):
     ok: bool
+
+
+class CacheRefreshResponse(BaseModel):
+    version: int
+    rule_count: int
+    source_count: int
+    refreshed_at: datetime | None = None
+
 
 
 async def perform_reconnect(app_instance) -> None:
@@ -76,3 +88,24 @@ async def reconnect(
     task.add_done_callback(request.app.state.background_tasks.discard)
     
     return AdminReconnectResponse(ok=True)
+
+
+@router.post(
+    "/cache/refresh",
+    response_model=CacheRefreshResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Trigger immediate in-memory RuleCache rebuild.",
+)
+async def refresh_cache(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    _: str = Depends(get_current_operator),
+) -> CacheRefreshResponse:
+    """Triggers an immediate rebuild of the RuleCache snapshot from MongoDB."""
+    cache = await trigger_cache_rebuild(db)
+    return CacheRefreshResponse(
+        version=cache.version,
+        rule_count=len(cache.rules),
+        source_count=len(cache.sources),
+        refreshed_at=cache.refreshed_at,
+    )
+

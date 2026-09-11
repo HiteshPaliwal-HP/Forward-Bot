@@ -350,6 +350,8 @@ async def test_build_rule_cache_skips_invalid_block_regex(caplog):
     # Invalid pattern skipped — CompiledPatterns exists but block_patterns is empty
     assert "rule1" in cache.compiled_patterns
     assert cache.compiled_patterns["rule1"].block_patterns == []
+    assert "cache_pattern_compile_failed" in caplog.text
+
 
 
 @pytest.mark.asyncio
@@ -581,3 +583,89 @@ async def test_run_cache_refresher_cancelled_error_propagates():
 
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+# ---------------------------------------------------------------------------
+# trigger_cache_rebuild — manual / event-driven trigger
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_trigger_cache_rebuild_success():
+    """trigger_cache_rebuild increments version and atomically updates CacheHolder.current."""
+    from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
+
+    saved = CacheHolder.current
+    CacheHolder.current = RuleCache(version=5)
+
+    built_cache = RuleCache(version=6, refreshed_at=datetime.now(timezone.utc))
+
+    async def mock_build(db, version):
+        assert version == 6
+        return built_cache
+
+    with patch(
+        "forward_bot.infrastructure.cache.cache_refresher.build_rule_cache",
+        side_effect=mock_build,
+    ):
+        result = await trigger_cache_rebuild(MagicMock())
+
+    assert result.version == 6
+    assert CacheHolder.current.version == 6
+    CacheHolder.current = saved
+
+
+@pytest.mark.asyncio
+async def test_trigger_cache_rebuild_concurrency_lock():
+    """Concurrent calls to trigger_cache_rebuild are serialized by the internal lock."""
+    from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
+
+    saved = CacheHolder.current
+    CacheHolder.current = RuleCache(version=0)
+
+    execution_order = []
+
+    async def mock_build(db, version):
+        execution_order.append(f"start_{version}")
+        await asyncio.sleep(0.02)
+        execution_order.append(f"end_{version}")
+        return RuleCache(version=version, refreshed_at=datetime.now(timezone.utc))
+
+    with patch(
+        "forward_bot.infrastructure.cache.cache_refresher.build_rule_cache",
+        side_effect=mock_build,
+    ):
+        task1 = asyncio.create_task(trigger_cache_rebuild(MagicMock()))
+        task2 = asyncio.create_task(trigger_cache_rebuild(MagicMock()))
+        await asyncio.gather(task1, task2)
+
+    # First build (version 1) must finish before second build (version 2) starts
+    assert execution_order == ["start_1", "end_1", "start_2", "end_2"]
+    assert CacheHolder.current.version == 2
+    CacheHolder.current = saved
+
+
+@pytest.mark.asyncio
+async def test_trigger_cache_rebuild_failure_logs_warning_and_retains_snapshot(caplog):
+    """If DB error occurs during trigger_cache_rebuild, warning is logged and snapshot retained."""
+    import logging
+    from forward_bot.infrastructure.cache.cache_refresher import trigger_cache_rebuild
+
+    saved = CacheHolder.current
+    CacheHolder.current = RuleCache(version=10)
+
+    async def mock_build_fail(db, version):
+        raise RuntimeError("DB connection dropped")
+
+    with patch(
+        "forward_bot.infrastructure.cache.cache_refresher.build_rule_cache",
+        side_effect=mock_build_fail,
+    ):
+        with caplog.at_level(logging.WARNING):
+            result = await trigger_cache_rebuild(MagicMock())
+
+    assert result.version == 10
+    assert CacheHolder.current.version == 10
+    assert "cache_refresh_failed" in caplog.text
+    CacheHolder.current = saved
+

@@ -106,8 +106,12 @@ async def test_worker_reload_loop_joins_channels(mock_settings, mock_db) -> None
         version=1
     )
 
+    # Mock get_input_entity to return a resolved entity
+    mock_client.get_input_entity = AsyncMock(return_value="resolved_entity")
+
     with patch("forward_bot.infrastructure.telegram.telegram_client") as mock_tg_holder, \
-         patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache):
+         patch("forward_bot.infrastructure.cache.rule_cache.CacheHolder.current", new=cache), \
+         patch("forward_bot.infrastructure.telegram.worker.utils.get_input_channel", side_effect=lambda x: x):
 
         mock_tg_holder.is_connected = True
         mock_tg_holder.client = mock_client
