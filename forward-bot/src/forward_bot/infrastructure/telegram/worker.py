@@ -73,7 +73,17 @@ class TelegramWorker:
                     await asyncio.sleep(1.0)
                 
                 client = telegram_client.client
-                
+
+                # Always remove any stale handlers from this client before re-registering.
+                # This prevents double-registration if the same client instance is reused
+                # across reconnect cycles (e.g., after an admin reconnect).
+                try:
+                    client.remove_event_handler(self._handler, events.NewMessage())
+                    client.remove_event_handler(self._edit_handler, events.MessageEdited())
+                    client.remove_event_handler(self._delete_handler, events.MessageDeleted())
+                except Exception:
+                    pass
+
                 # Register event handlers using add_event_handler for the current client instance
                 client.add_event_handler(self._handler, events.NewMessage())
                 client.add_event_handler(self._edit_handler, events.MessageEdited())
