@@ -51,8 +51,12 @@ async def readiness_check(response: Response) -> dict[str, Any]:
 @router.get("/telegram")
 async def telegram_status(response: Response) -> dict[str, Any]:
     """Telegram connection status."""
-    status_str = telegram_client.status
-    if status_str != "connected":
+    # Use is_connected property (strict multi-condition check) rather than the
+    # raw .status string, which can remain "connected" after the underlying
+    # Telethon socket drops while _connected is already False.
+    is_connected = telegram_client.is_connected
+    status_str = "connected" if is_connected else telegram_client.status
+    if not is_connected:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
         "telegram": status_str,

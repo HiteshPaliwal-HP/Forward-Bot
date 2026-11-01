@@ -154,20 +154,20 @@ async def start_auth(
             }
         )
 
-    session_path = Path(settings.telegram_session_path).resolve()
-    session_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if tg_client.client is None:
-        tg_client.client = TelegramClient(
-            str(session_path),
-            settings.telegram_api_id,
-            settings.telegram_api_hash,
-        )
-
-    if not tg_client.client.is_connected():
-        await tg_client.client.connect()
-
     try:
+        session_path = Path(settings.telegram_session_path).resolve()
+        session_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if tg_client.client is None:
+            tg_client.client = TelegramClient(
+                str(session_path),
+                settings.telegram_api_id,
+                settings.telegram_api_hash,
+            )
+
+        if not tg_client.client.is_connected():
+            await tg_client.client.connect()
+
         res = await tg_client.client.send_code_request(phone_number)
         phone_code_hash = getattr(res, "phone_code_hash", None)
         AUTH_STATE["current"] = {
@@ -219,24 +219,24 @@ async def verify_auth(
     phone = state["phone"]
     phone_code_hash = state["phone_code_hash"]
 
-    if tg_client.client is None:
-        settings = getattr(request.app.state, "settings", tg_client.settings)
-        if settings is None:
-            return JSONResponse(
-                status_code=500,
-                content={"error": {"code": "server_error", "message": "Application settings missing."}}
-            )
-        session_path = Path(settings.telegram_session_path).resolve()
-        tg_client.client = TelegramClient(
-            str(session_path),
-            settings.telegram_api_id,
-            settings.telegram_api_hash,
-        )
-
-    if not tg_client.client.is_connected():
-        await tg_client.client.connect()
-
     try:
+        if tg_client.client is None:
+            settings = getattr(request.app.state, "settings", tg_client.settings)
+            if settings is None:
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": {"code": "server_error", "message": "Application settings missing."}}
+                )
+            session_path = Path(settings.telegram_session_path).resolve()
+            tg_client.client = TelegramClient(
+                str(session_path),
+                settings.telegram_api_id,
+                settings.telegram_api_hash,
+            )
+
+        if not tg_client.client.is_connected():
+            await tg_client.client.connect()
+
         if body.password:
             await tg_client.client.sign_in(password=body.password)
         else:
