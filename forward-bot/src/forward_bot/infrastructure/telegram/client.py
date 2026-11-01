@@ -70,12 +70,22 @@ class TelegramClientHolder:
 
                 # Verify if user is authorized with this session
                 if not await self.client.is_user_authorized():
-                    # Invalid or expired session
+                    # Session file exists but is revoked/expired — clean up gracefully.
+                    # Do NOT raise here: the app should still start so the user can
+                    # re-authenticate via the Settings UI OTP flow.
                     self.status = "disconnected"
                     self._connected = False
                     await self.client.disconnect()
                     self.client = None
-                    self._handle_session_invalidated(None)
+                    self.last_event = datetime.now(timezone.utc).isoformat()
+                    # Delete the stale session file so the next restart skips this path.
+                    self._delete_session_file(actual_session_file)
+                    logger.warning(
+                        "telegram_session_invalid",
+                        message="Telegram session is not authorized (revoked or expired). "
+                                "App will start with Telegram disconnected. "
+                                "Re-authenticate via Settings → Telegram Session Control."
+                    )
                     return
 
                 self.status = "connected"
@@ -87,12 +97,21 @@ class TelegramClientHolder:
                 )
 
             except (AuthKeyUnregisteredError, UserDeactivatedError, SessionExpiredError) as e:
+                # Session was revoked server-side — same graceful degradation, do NOT raise.
                 self.status = "disconnected"
                 self._connected = False
                 if self.client:
                     await self.client.disconnect()
                     self.client = None
-                self._handle_session_invalidated(e)
+                self.last_event = datetime.now(timezone.utc).isoformat()
+                self._delete_session_file(actual_session_file)
+                logger.warning(
+                    "telegram_session_revoked",
+                    error=str(e),
+                    message="Telegram session revoked by server. "
+                            "App will start with Telegram disconnected. "
+                            "Re-authenticate via Settings → Telegram Session Control."
+                )
             except Exception as e:
                 self.status = "disconnected"
                 self._connected = False
@@ -224,21 +243,27 @@ class TelegramClientHolder:
             self.last_event = datetime.now(timezone.utc).isoformat()
             logger.info("telegram_client_disconnected", message="Telegram client disconnected")
 
-    def _handle_session_invalidated(self, exc: Exception | None) -> None:
-        """Handle server-side session invalidation by logging and raising to abort startup.
+    def _delete_session_file(self, session_file: Path) -> None:
+        """Safely delete a stale session file, logging any errors."""
+        if session_file.exists():
+            try:
+                session_file.unlink()
+                logger.info("telegram_session_file_deleted", path=str(session_file))
+            except Exception as e:
+                logger.error("telegram_session_delete_failed", error=str(e), path=str(session_file))
 
-        The RuntimeError propagates out of connect() through the FastAPI lifespan,
-        which uvicorn treats as a fatal startup failure and exits cleanly.
+    def _handle_session_invalidated(self, exc: Exception | None) -> None:
+        """Log a session invalidation event. Does NOT raise — the app continues running
+        with Telegram disconnected so the operator can re-authenticate via the Settings UI.
         """
         self.last_event = datetime.now(timezone.utc).isoformat()
         self._connected = False
-        logger.critical(
+        logger.warning(
             "telegram_session_invalidated",
-            level="critical",
             error=str(exc) if exc else "User not authorized",
-            message="Telegram session is invalid or has been invalidated server-side"
+            message="Telegram session is invalid or has been invalidated server-side. "
+                    "Re-authenticate via Settings → Telegram Session Control."
         )
-        raise RuntimeError("Telegram session is invalid or has been invalidated server-side")
 
 
 # Global singleton instance
